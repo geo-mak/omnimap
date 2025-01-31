@@ -762,8 +762,8 @@ where
         let hash = self.make_hash(key);
 
         let result = self.find(hash, key);
-
-        // Find the slot of the key.
+        
+        // Key is found, remove the entry.
         if let Some(index) = result.entry_index {
             self.len -= 1;
             self.deleted += 1;

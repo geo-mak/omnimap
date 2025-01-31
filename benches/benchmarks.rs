@@ -84,7 +84,7 @@ fn bench_remove(c: &mut Criterion) {
             map.insert(i, i);
         }
         b.iter(|| {
-            black_box(map.remove(&1));
+            black_box(map.remove(&0));
         })
     });
 }
@@ -96,7 +96,7 @@ fn bench_remove_hashmap(c: &mut Criterion) {
             map.insert(i, i);
         }
         b.iter(|| {
-            black_box(map.remove(&1));
+            black_box(map.remove(&0));
         })
     });
 }

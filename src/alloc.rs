@@ -81,7 +81,7 @@ const fn debug_assert_copy_inbounds(allocated_count: usize, copy_count: usize) {
 /// with measures such as null pointer checks, bounds checking, or automatic drop of initialized
 /// values.
 ///
-/// Limited checks for invariants is done in debug mode only.
+/// Limited checks for invariants are done in debug mode only.
 ///
 /// `UnsafeBufferPointer` doesn't store any metadata about the allocated memory space, such as the
 /// size of the allocated memory space and the number of initialized elements, therefore it doesn't

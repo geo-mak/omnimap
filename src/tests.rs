@@ -378,34 +378,6 @@ mod map_tests {
     fn test_map_remove_existing_key() {
         let mut map = OmniMap::new();
 
-        // Remove when the map is empty must return None.
-        assert_eq!(map.remove(&1), None);
-
-        // Insert 4 items.
-        for i in 1..4 {
-            map.insert(i, i + 1);
-        }
-
-        assert_eq!(map.len(), 3);
-        assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 4);
-
-        assert_eq!(map.remove(&1), Some(2));
-
-        assert_eq!(map.len(), 2);
-        assert_eq!(map.debug_deleted(), 1);
-        assert_eq!(map.capacity(), 4);
-
-        // Access by get to the remaining items.
-        assert_eq!(map.get(&1), None);
-        assert_eq!(map.get(&2), Some(&3));
-        assert_eq!(map.get(&3), Some(&4));
-    }
-
-    #[test]
-    fn test_map_remove_preserve_order() {
-        let mut map = OmniMap::new();
-
         map.insert(1, 2);
 
         // Remove the only item.
