@@ -177,6 +177,30 @@ fn bench_shrink_to_fit_hashmap(c: &mut Criterion) {
     });
 }
 
+fn bench_clear(c: &mut Criterion) {
+    c.bench_function("clear 1e4", |b| {
+        let mut map = OmniMap::new();
+        for i in 0..10_000 {
+            map.insert(i, i);
+        }
+        b.iter(|| {
+            black_box(map.clear());
+        })
+    });
+}
+
+fn bench_clear_hashmap(c: &mut Criterion) {
+    c.bench_function("clear 1e4 (std map)", |b| {
+        let mut map = HashMap::new();
+        for i in 0..10_000 {
+            map.insert(i, i);
+        }
+        b.iter(|| {
+            black_box(map.clear());
+        })
+    });
+}
+
 criterion_group!(
     benches_insert_get,
     bench_insert,
@@ -193,6 +217,8 @@ criterion_group!(
     bench_remove_hashmap,
     bench_pop_first,
     bench_pop_last,
+    bench_clear,
+    bench_clear_hashmap,
 );
 
 criterion_group!(
