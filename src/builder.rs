@@ -80,7 +80,7 @@ macro_rules! map {
             map
         }
     };
-    // Catch-all pattern for invalid patterns.
+    // Anything else is invalid.
     ( $($tt:tt)* ) => {
         compile_error!("Invalid syntax. Use `map! { key: value, ... }` or `map! { capacity; key: value, ... }`.");
     };

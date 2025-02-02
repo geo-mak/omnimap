@@ -217,16 +217,16 @@ where
         key.hash(&mut hasher);
         hasher.finish() as usize
     }
-    
+
     /// Allocates the specified `cap` and fill index with empty slots.
     /// Map's capacity is set to `cap` after calling this method.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// - This method should be called **only** when the map is not allocated.
     ///
     /// - `new_cap` must be greater than `0` and within the range of `isize::MAX` bytes.
-    /// 
+    ///
     #[inline]
     fn allocate(&mut self, cap: usize) {
         // Allocate the entries and the index with the initial capacity.
@@ -235,7 +235,7 @@ where
             self.index.allocate(cap);
             self.index.memset_default(cap);
         }
-        
+
         // Update capacity.
         self.cap = cap;
     }
@@ -301,7 +301,7 @@ where
             }
         }
     }
-    
+
     /// Shrinks or grows the allocated memory space to the specified `new_cap`.
     ///
     /// This method will also reset the index and rebuild it according to the new capacity.
@@ -351,7 +351,7 @@ where
             self.reallocate_reindex(new_cap);
         }
     }
-    
+
     /// Reserves capacity for `additional` more elements.
     /// The resulting capacity will be equal to `self.capacity() + additional` exactly.
     ///
@@ -382,7 +382,7 @@ where
         if additional == 0 {
             return;
         }
-        
+
         // The map must be allocated before expanding capacity (Likely).
         if self.cap != 0 {
             // Reallocate the entries and index with the new capacity and reindex the map.
@@ -406,23 +406,24 @@ where
             self.allocate(1);
         }
     }
-    
+
     /// Finds the slot of the key in the index.
     ///
     /// # Returns
     ///
-    /// `FindExpr` with:
+    /// `FindResult` with:
     /// - `slot_index`: The index of the slot in the index.
     /// - `entry_index`: `Some(index)` if the key exists, `None` if the key does not exist.
     ///
     fn find(&self, hash: usize, key: &K) -> FindResult {
         let mut slot_index = hash % self.cap;
         let mut step = 0;
-        // This is safe because index is always initialized.
         unsafe {
-            // EDGE CASE: if capacity is full and all slots are occupied, it will be an infinite loop,
-            // but this is prevented by making sure that step is less than capacity.
+            // Note: It will be an infinite loop, if all slots are occupied and the key doesn't 
+            // exist, but this is prevented by making capacity the max limit for probing.
+            // This case is possible because the user can compact the map anytime.
             while step < self.cap {
+                // This is safe because index is always initialized as long the map is allocated.
                 match *self.index.load(slot_index) {
                     // Slot is empty, key does not exist.
                     Slot::Empty => {
@@ -455,7 +456,7 @@ where
             entry_index: None,
         }
     }
-    
+
     /// Inserts a key-value pair into the map.
     /// If the map did not have this key present, `None` is returned.
     /// If the map did have this key present, the value is updated, and the old value is returned.
