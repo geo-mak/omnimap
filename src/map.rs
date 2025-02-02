@@ -217,6 +217,50 @@ where
         key.hash(&mut hasher);
         hasher.finish() as usize
     }
+    
+    /// Allocates the specified `cap` and fill index with empty slots.
+    /// Map's capacity is set to `cap` after calling this method.
+    /// 
+    /// # Safety
+    /// 
+    /// - This method should be called **only** when the map is not allocated.
+    ///
+    /// - `new_cap` must be greater than `0` and within the range of `isize::MAX` bytes.
+    /// 
+    #[inline]
+    fn allocate(&mut self, cap: usize) {
+        // Allocate the entries and the index with the initial capacity.
+        unsafe {
+            self.entries.allocate(cap);
+            self.index.allocate(cap);
+            self.index.memset_default(cap);
+        }
+        
+        // Update capacity.
+        self.cap = cap;
+    }
+
+    /// Deallocates the entries and the index without calling `drop` on the initialized entries.
+    ///
+    /// Fields of capacity, length, and deleted counter will be reset to `0`.
+    ///
+    /// # Safety
+    ///
+    /// Index and entries must be allocated before calling this method.
+    ///
+    #[inline]
+    fn deallocate(&mut self) {
+        // Deallocate the entries and the index.
+        unsafe {
+            self.entries.deallocate(self.cap);
+            self.index.deallocate(self.cap);
+        }
+
+        // Reset fields.
+        self.cap = 0;
+        self.len = 0;
+        self.deleted = 0;
+    }
 
     /// Builds the index of the map according to the current entries and the capacity of the index.
     /// This method should be called **only** after resetting the index with a new capacity.
@@ -257,7 +301,7 @@ where
             }
         }
     }
-
+    
     /// Shrinks or grows the allocated memory space to the specified `new_cap`.
     ///
     /// This method will also reset the index and rebuild it according to the new capacity.
@@ -266,7 +310,7 @@ where
     ///
     /// - Index and entries must be allocated before calling this method.
     ///
-    /// - `new_cap` must be greater than `0` and within the range of `isize::MAX`.
+    /// - `new_cap` must be greater than `0` and within the range of `isize::MAX` bytes.
     ///
     /// - `new_cap` must be greater than or equal to the current length.
     ///
@@ -289,28 +333,6 @@ where
         self.build_index();
     }
 
-    /// Deallocates the entries and the index without calling `drop` on the initialized entries.
-    ///
-    /// Fields of capacity, length, and deleted counter will be reset to `0`.
-    ///
-    /// # Safety
-    ///
-    /// Index and entries must be allocated before calling this method.
-    ///
-    #[inline]
-    fn deallocate(&mut self) {
-        // Deallocate the entries and the index.
-        unsafe {
-            self.entries.deallocate(self.cap);
-            self.index.deallocate(self.cap);
-        }
-
-        // Reset fields.
-        self.cap = 0;
-        self.len = 0;
-        self.deleted = 0;
-    }
-
     /// Resizes map with reindexing if the current load exceeds the load factor.
     fn maybe_grow(&mut self) {
         let load_factor = (self.len + self.deleted) as f64 / self.cap as f64;
@@ -329,7 +351,62 @@ where
             self.reallocate_reindex(new_cap);
         }
     }
+    
+    /// Reserves capacity for `additional` more elements.
+    /// The resulting capacity will be equal to `self.capacity() + additional` exactly.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(n) on average.
+    ///
+    /// # Parameters
+    ///
+    /// - `additional`: The number of additional elements to reserve space for.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omni_map::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    /// map.insert(1, "a");
+    ///
+    /// // Reserve space for 10 more elements
+    /// map.reserve(10);
+    ///
+    /// // The capacity is now 11
+    /// assert_eq!(map.capacity(), 11);
+    /// ```
+    #[inline]
+    pub fn reserve(&mut self, additional: usize) {
+        if additional == 0 {
+            return;
+        }
+        
+        // The map must be allocated before expanding capacity (Likely).
+        if self.cap != 0 {
+            // Reallocate the entries and index with the new capacity and reindex the map.
+            let new_cap = self.cap.checked_add(additional).unwrap_or(usize::MAX);
+            self.reallocate_reindex(new_cap);
+        } else {
+            // Allocate new capacity.
+            self.allocate(additional);
+        }
+    }
 
+    /// This method will grow the capacity of the map if the current load exceeds the load factor.
+    /// If the capacity is zero, it will allocate the initial capacity without reindexing.
+    #[inline(always)]
+    fn ensure_capacity(&mut self) {
+        if self.cap != 0 {
+            // This will reindex the map if the capacity is grown.
+            self.maybe_grow();
+        } else {
+            // Allocate initial capacity.
+            self.allocate(1);
+        }
+    }
+    
     /// Finds the slot of the key in the index.
     ///
     /// # Returns
@@ -378,62 +455,7 @@ where
             entry_index: None,
         }
     }
-
-    /// Reserves capacity for `additional` more elements.
-    /// The resulting capacity will be equal to `self.capacity() + additional` exactly.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) on average.
-    ///
-    /// # Parameters
-    ///
-    /// - `additional`: The number of additional elements to reserve space for.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omni_map::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    /// map.insert(1, "a");
-    ///
-    /// // Reserve space for 10 more elements
-    /// map.reserve(10);
-    ///
-    /// // The capacity is now 11
-    /// assert_eq!(map.capacity(), 11);
-    /// ```
-    #[inline]
-    pub fn reserve(&mut self, additional: usize) {
-        if additional == 0 {
-            return;
-        }
-
-        // Reallocate the entries and index with the new capacity and reindex the map.
-        let new_cap = self.cap.checked_add(additional).unwrap_or(usize::MAX);
-        self.reallocate_reindex(new_cap);
-    }
-
-    /// This method will grow the capacity of the map if the current load exceeds the load factor.
-    /// If the capacity is zero, it will allocate the initial capacity without reindexing.
-    #[inline(always)]
-    fn ensure_capacity(&mut self) {
-        if self.cap == 0 {
-            // Set the initial capacity.
-            self.cap = 1;
-            // Allocate the entries and the index with the initial capacity.
-            unsafe {
-                self.entries.allocate(self.cap);
-                self.index.allocate(self.cap);
-                self.index.memset_default(self.cap);
-            }
-        } else {
-            // This will reindex the map if the capacity is grown.
-            self.maybe_grow();
-        }
-    }
-
+    
     /// Inserts a key-value pair into the map.
     /// If the map did not have this key present, `None` is returned.
     /// If the map did have this key present, the value is updated, and the old value is returned.
