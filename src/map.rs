@@ -9,6 +9,7 @@ use core::{fmt, mem};
 use std::collections::hash_map::DefaultHasher;
 
 use crate::alloc::UnsafeBufferPointer;
+use crate::opt::BranchOptimizer;
 
 struct FindResult {
     slot_index: usize,
@@ -337,7 +338,7 @@ where
     fn maybe_grow(&mut self) {
         let load_factor = (self.len + self.deleted) as f64 / self.cap as f64;
 
-        if load_factor > Self::MAX_LOAD_FACTOR {
+        if BranchOptimizer::unlikely(load_factor > Self::MAX_LOAD_FACTOR) {
             let growth_factor = (self.cap as f64 / Self::MAX_LOAD_FACTOR).ceil() as usize;
 
             // New capacity must be within the range of `usize` and less than or equal to
@@ -379,18 +380,18 @@ where
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        if additional == 0 {
+        if BranchOptimizer::unlikely(additional == 0) {
             return;
         }
 
         // The map must be allocated before expanding capacity (Likely).
-        if self.cap != 0 {
+        if BranchOptimizer::unlikely(self.cap == 0) {
+            // Allocate new capacity.
+            self.allocate(additional);
+        } else {
             // Reallocate the entries and index with the new capacity and reindex the map.
             let new_cap = self.cap.checked_add(additional).unwrap_or(usize::MAX);
             self.reallocate_reindex(new_cap);
-        } else {
-            // Allocate new capacity.
-            self.allocate(additional);
         }
     }
 
@@ -398,12 +399,12 @@ where
     /// If the capacity is zero, it will allocate the initial capacity without reindexing.
     #[inline(always)]
     fn ensure_capacity(&mut self) {
-        if self.cap != 0 {
-            // This will reindex the map if the capacity is grown.
-            self.maybe_grow();
-        } else {
+        if BranchOptimizer::unlikely(self.cap == 0) {
             // Allocate initial capacity.
             self.allocate(1);
+        } else {
+            // This will reindex the map if the capacity is grown.
+            self.maybe_grow();
         }
     }
 
@@ -419,7 +420,7 @@ where
         let mut slot_index = hash % self.cap;
         let mut step = 0;
         unsafe {
-            // Note: It will be an infinite loop, if all slots are occupied and the key doesn't 
+            // Note: It will be an infinite loop, if all slots are occupied and the key doesn't
             // exist, but this is prevented by making capacity the max limit for probing.
             // This case is possible because the user can compact the map anytime.
             while step < self.cap {
@@ -431,7 +432,7 @@ where
                             slot_index,
                             entry_index: None,
                         };
-                    },
+                    }
                     // Slot is occupied, check if the key matches.
                     Slot::Occupied(index) => {
                         if self.entries.load(index).key == *key {
@@ -440,10 +441,10 @@ where
                                 entry_index: Some(index),
                             };
                         }
-                    },
+                    }
                     // Deleted must be treated as occupied, because it might have been occupied
                     // by a key with the same hash, and the searched key might be in the next slot.
-                    Slot::Deleted => {},
+                    Slot::Deleted => {}
                 }
                 // Search further until finding a key match or encountering an empty slot.
                 slot_index = (slot_index + 1) % self.cap;
@@ -505,10 +506,9 @@ where
 
         // Key exists, update the value.
         if let Some(index) = result.entry_index {
-            let old_value: V = unsafe {
-                mem::replace(&mut self.entries.load_mut(index).value, value)
-            };
-            return Some(old_value)
+            let old_value: V =
+                unsafe { mem::replace(&mut self.entries.load_mut(index).value, value) };
+            return Some(old_value);
         };
 
         // Key does not exist, insert the new key-value pair.
@@ -519,7 +519,8 @@ where
                 "Logic error: slot is expected to be empty"
             );
             // Update the index.
-            self.index.store(result.slot_index, Slot::Occupied(self.len));
+            self.index
+                .store(result.slot_index, Slot::Occupied(self.len));
             // Insert the new key-value pair.
             self.entries.store(self.len, Entry::new(key, value, hash));
         }
@@ -785,7 +786,7 @@ where
         let hash = self.make_hash(key);
 
         let result = self.find(hash, key);
-        
+
         // Key is found, remove the entry.
         if let Some(index) = result.entry_index {
             self.len -= 1;
@@ -796,12 +797,11 @@ where
                 self.index.store(result.slot_index, Slot::Deleted);
 
                 // If the entry is the last one, take it without shifting.
-                if index == self.len {
+                if BranchOptimizer::unlikely(index == self.len) {
                     self.entries.take_no_shift(index)
                 } else {
                     self.decrement_index(index);
-                    self.entries
-                        .take_shift_left(index, self.len - index)
+                    self.entries.take_shift_left(index, self.len - index)
                 }
             };
 
@@ -849,7 +849,7 @@ where
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
 
-        if result.entry_index.is_some() {
+        if BranchOptimizer::likely(result.entry_index.is_some()) {
             self.len -= 1;
             self.deleted += 1;
 
@@ -901,7 +901,7 @@ where
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
 
-        if result.entry_index.is_some() {
+        if BranchOptimizer::likely(result.entry_index.is_some()) {
             self.len -= 1;
             self.deleted += 1;
 
@@ -951,10 +951,10 @@ where
     pub fn shrink_to(&mut self, capacity: usize) {
         // Capacity must be less than the current capacity and greater than or equal to the number
         // of elements.
-        if capacity >= self.len && capacity < self.cap {
+        if BranchOptimizer::likely(capacity >= self.len && capacity < self.cap) {
             // Zero-count allocation is not allowed.
             // If the length is zero, deallocate the memory.
-            if self.len > 0 {
+            if BranchOptimizer::likely(self.len > 0) {
                 self.reallocate_reindex(capacity);
             } else {
                 self.deallocate();
@@ -990,10 +990,10 @@ where
     #[inline]
     pub fn shrink_to_fit(&mut self) {
         // Capacity must be greater than the number of elements.
-        if self.cap > self.len {
+        if BranchOptimizer::likely(self.cap > self.len) {
             // Zero-count allocation is not allowed.
             // If the length is zero, deallocate the memory.
-            if self.len > 0 {
+            if BranchOptimizer::likely(self.len > 0) {
                 self.reallocate_reindex(self.len);
             } else {
                 self.deallocate();

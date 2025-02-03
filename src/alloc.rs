@@ -5,6 +5,8 @@ use core::ptr;
 
 use std::alloc::{self, alloc};
 
+use crate::opt::BranchOptimizer;
+
 /// Debug-mode check for the layout size and alignment.
 /// This function is only available in debug builds.
 ///
@@ -218,15 +220,13 @@ impl<T> UnsafeBufferPointer<T> {
     ///
     #[must_use]
     #[inline(always)]
-    const fn make_layout(&self, count: usize) -> Layout {
-        unsafe {
-            let size = count.unchecked_mul(Self::T_SIZE);
+    const unsafe fn make_layout(&self, count: usize) -> Layout {
+        let size = count.unchecked_mul(Self::T_SIZE);
 
-            #[cfg(debug_assertions)]
-            debug_layout_size_align(size, Self::T_ALIGN);
+        #[cfg(debug_assertions)]
+        debug_layout_size_align(size, Self::T_ALIGN);
 
-            Layout::from_size_align_unchecked(size, Self::T_ALIGN)
-        }
+        Layout::from_size_align_unchecked(size, Self::T_ALIGN)
     }
 
     /// Allocates memory space for the specified `count` of type `T`.
@@ -252,9 +252,8 @@ impl<T> UnsafeBufferPointer<T> {
         // Allocate memory space
         let ptr = alloc(new_layout) as *mut T;
 
-        // Check if allocation failed
-        if ptr.is_null() {
-            // Allocation failed
+        // Failure branch.
+        if BranchOptimizer::unlikely(ptr.is_null()) {
             alloc::handle_alloc_error(new_layout);
         }
 
@@ -340,7 +339,7 @@ impl<T> UnsafeBufferPointer<T> {
         let new_ptr = alloc(new_layout) as *mut T;
 
         // Success branch.
-        if !new_ptr.is_null() {
+        if BranchOptimizer::likely(!new_ptr.is_null()) {
             ptr::copy_nonoverlapping(self.ptr, new_ptr, copy_count);
 
             let current_layout = self.make_layout(allocated_count);
@@ -768,7 +767,8 @@ mod ptr_tests {
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Allocation size exceeds maximum limit on this platform")]
     fn test_buffer_ptr_new_allocate_overflow() {
-        let _: UnsafeBufferPointer<u8> = unsafe { UnsafeBufferPointer::new_allocate(isize::MAX as usize + 1) };
+        let _: UnsafeBufferPointer<u8> =
+            unsafe { UnsafeBufferPointer::new_allocate(isize::MAX as usize + 1) };
     }
 
     #[test]
@@ -858,7 +858,8 @@ mod ptr_tests {
     #[test]
     fn test_buffer_ptr_new_allocate_default() {
         unsafe {
-            let mut buffer_ptr: UnsafeBufferPointer<Choice> = UnsafeBufferPointer::new_allocate_default(3);
+            let mut buffer_ptr: UnsafeBufferPointer<Choice> =
+                UnsafeBufferPointer::new_allocate_default(3);
 
             // Memory space should have been allocated.
             assert!(!buffer_ptr.is_null());
@@ -1117,7 +1118,8 @@ mod ptr_tests {
         let drop_count = Rc::new(RefCell::new(0));
 
         unsafe {
-            let mut buffer_ptr: UnsafeBufferPointer<DropCounter> = UnsafeBufferPointer::new_allocate(3);
+            let mut buffer_ptr: UnsafeBufferPointer<DropCounter> =
+                UnsafeBufferPointer::new_allocate(3);
 
             // Reference 5 elements to the same drop counter.
             for i in 0..3 {
@@ -1160,7 +1162,8 @@ mod ptr_tests {
         let drop_count = Rc::new(RefCell::new(0));
 
         unsafe {
-            let mut buffer_ptr: UnsafeBufferPointer<DropCounter> = UnsafeBufferPointer::new_allocate(5);
+            let mut buffer_ptr: UnsafeBufferPointer<DropCounter> =
+                UnsafeBufferPointer::new_allocate(5);
 
             // Reference 5 elements to the same drop counter.
             for i in 0..5 {
@@ -1189,7 +1192,8 @@ mod ptr_tests {
         let drop_count = Rc::new(RefCell::new(0));
 
         unsafe {
-            let mut buffer_ptr: UnsafeBufferPointer<DropCounter> = UnsafeBufferPointer::new_allocate(3);
+            let mut buffer_ptr: UnsafeBufferPointer<DropCounter> =
+                UnsafeBufferPointer::new_allocate(3);
 
             // Reference 3 elements to the same drop counter.
             for i in 0..3 {

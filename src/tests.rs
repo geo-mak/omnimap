@@ -510,18 +510,18 @@ mod map_tests {
     }
 
     #[test]
-    fn test_map_reserve_not_allocated(){
+    fn test_map_reserve_not_allocated() {
         let mut map = OmniMap::<u8, u8>::new();
 
         assert_eq!(map.capacity(), 0);
 
         // Reserve capacity while the map is still unallocated.
         map.reserve(1);
-        
+
         // Should be fine.
         assert_eq!(map.capacity(), 1);
     }
-    
+
     #[test]
     fn test_map_reserve_allocated() {
         let mut map = OmniMap::new();
