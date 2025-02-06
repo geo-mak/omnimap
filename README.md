@@ -33,8 +33,8 @@ fn main(){
 }
 ```
 
-### Create a new OmniMap using the literal syntax
-The literal syntax consists of a list of key-value pairs separated by a colon `:` and enclosed in curly braces `{}`.
+### Create a new OmniMap using the declarative syntax
+The declarative syntax consists of a list of key-value pairs separated by a colon `:` and enclosed in curly braces `{}`.
 ```rust
 use omni_map::map;
 
@@ -71,7 +71,7 @@ fn main(){
 }
 ```
 
-### Create a new OmniMap with capacity using the literal syntax
+### Create a new OmniMap with capacity using the declarative syntax
 ```rust
 use omni_map::map;
 
