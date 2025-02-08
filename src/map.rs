@@ -87,7 +87,8 @@ where
 {
     // 75% threshold for growing.
     const MAX_LOAD_FACTOR: f64 = 0.75;
-
+    const DEFAULT_CAPACITY: usize = 16;
+    
     /// Creates a new `OmniMap` with `0` initial capacity.
     ///
     /// # Examples
@@ -417,6 +418,7 @@ where
     /// - `entry_index`: `Some(index)` if the key exists, `None` if the key does not exist.
     ///
     fn find(&self, hash: usize, key: &K) -> FindResult {
+        debug_assert!(self.cap > 0, "Logic error: find is called while the map is unallocated");
         let mut slot_index = hash % self.cap;
         let mut step = 0;
         unsafe {
@@ -849,21 +851,21 @@ where
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
 
-        if BranchOptimizer::likely(result.entry_index.is_some()) {
-            self.len -= 1;
-            self.deleted += 1;
+        debug_assert!(
+            result.entry_index.is_some(),
+            "Logic error: entry exists, but it has no associated slot in the index"
+        );
+        
+        self.len -= 1;
+        self.deleted += 1;
 
-            let entry = unsafe {
-                self.index.store(result.slot_index, Slot::Deleted);
-                self.decrement_index(0);
-                self.entries.take_shift_left(0, self.len)
-            };
-
-            return Some((entry.key, entry.value));
+        let entry = unsafe {
+            self.index.store(result.slot_index, Slot::Deleted);
+            self.decrement_index(0);
+            self.entries.take_shift_left(0, self.len)
         };
 
-        // This must be unreachable, the slot must be found.
-        unreachable!("Logic error: entry exists, but it has no associated slot in the index.");
+        Some((entry.key, entry.value))
     }
 
     /// Pops the last entry from the map.
@@ -900,21 +902,21 @@ where
         let entry_ref = unsafe { self.entries.load(self.len - 1) };
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
+        
+        debug_assert!(
+            result.entry_index.is_some(), 
+            "Logic error: entry exists, but it has no associated slot in the index"
+        );
+        
+        self.len -= 1;
+        self.deleted += 1;
 
-        if BranchOptimizer::likely(result.entry_index.is_some()) {
-            self.len -= 1;
-            self.deleted += 1;
+        let entry = unsafe {
+            self.index.store(result.slot_index, Slot::Deleted);
+            self.entries.take_no_shift(self.len)
+        };
 
-            let entry = unsafe {
-                self.index.store(result.slot_index, Slot::Deleted);
-                self.entries.take_no_shift(self.len)
-            };
-
-            return Some((entry.key, entry.value));
-        }
-
-        // This must be unreachable, the slot must be found.
-        unreachable!("Logic error: entry exists, but it has no associated slot in the index.");
+        Some((entry.key, entry.value))
     }
 
     /// Shrinks the capacity of the `OmniMap` to the specified capacity.
@@ -1147,13 +1149,15 @@ where
         self.iter_entries().map(|entry| &entry.value)
     }
 
-    /// Returns the current load factor of the `OmniMap` as a ratio.
-    #[inline]
-    pub fn current_load(&self) -> f64 {
+    /// Returns the current load factor.
+    /// If capacity is `0`, `0.0` will be returned.
+    #[inline(always)]
+    pub const fn load_factor(&self) -> f64 {
         if self.cap == 0 {
-            return 0.0;
+            0.0
+        } else {
+            (self.len + self.deleted) as f64 / self.cap as f64    
         }
-        (self.len + self.deleted) as f64 / self.cap as f64
     }
 }
 
@@ -1191,7 +1195,7 @@ where
     #[must_use]
     #[inline]
     fn default() -> Self {
-        Self::with_capacity(16)
+        Self::with_capacity(Self::DEFAULT_CAPACITY)
     }
 }
 
@@ -1325,7 +1329,7 @@ where
             return Self::new();
         }
 
-        // Capacity > 0 => entries and index are allocated.
+        // Capacity > 0 -> entries and index are allocated.
         unsafe {
             OmniMap {
                 entries: self.entries.make_clone(self.cap, self.len),
@@ -1377,7 +1381,7 @@ where
             return Self::new();
         }
 
-        // Len > 0 => capacity > 0 => entries and index are allocated.
+        // Len > 0 -> capacity > 0 -> entries and index are allocated.
         let mut clone = unsafe {
             OmniMap {
                 // Clone the entries with capacity equal to the number of elements.
@@ -1410,7 +1414,7 @@ impl<K, V> Iterator for OmniMapIntoIter<K, V> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        // self.index < self.len => len > 0 => pointer is not null.
+        // index < len -> len > 0 -> cap > 0 -> pointer != null.
         if self.index < self.len {
             let item = unsafe {
                 // Safety: The destructor of the iterator must not call drop on this value,
@@ -1432,7 +1436,7 @@ impl<K, V> Drop for OmniMapIntoIter<K, V> {
         }
 
         unsafe {
-            // self.index < self.len => len > 0 && the iterator is not exhausted.
+            // index < len -> len > 0 && the iterator is not exhausted.
             if self.index < self.len {
                 // Drop the remaining entries.
                 self.entries.drop_range(self.index..self.len);
@@ -1490,15 +1494,20 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         // Disable the destructor of the map.
         let mut manual_self = ManuallyDrop::new(self);
 
-        // Len > 0 => capacity > 0 => entries and index are allocated.
+        // Len > 0 -> capacity > 0 -> entries and index are allocated.
         unsafe {
+            // The fields that need deallocation are:
+            // - index
+            // - entries
+            // index must be deallocated here and entries shall be deallocated by the iterator.
+            
+            // Deallocate the index.
+            manual_self.index.deallocate(iterator.cap);
+            
             // Obtain the pointer of the allocated entries and invalidate the original.
             // This will make the iterator the owner of the allocated memory of the entries,
             // and the one responsible for deallocating it.
             iterator.entries = manual_self.entries.invalidate();
-
-            // Deallocate the index.
-            manual_self.index.deallocate(iterator.cap);
         }
 
         // Done.

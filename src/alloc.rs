@@ -272,9 +272,9 @@ impl<T> UnsafeBufferPointer<T> {
     /// - Pointer must be allocated before calling this method.
     ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
     ///
-    /// - It doesn't call `drop` on the initialized elements.
-    ///   If the elements are not of trivial type, or not dropped properly, this might cause
-    ///   memory leaks.
+    /// - Initialized elements will not be dropped before deallocating memory.
+    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not 
+    ///   dropped properly before calling this method.
     ///
     /// - `allocated_count` must be the same as the actual allocated count of type `T`, which
     ///   implies it can't be `0` also.
@@ -306,8 +306,8 @@ impl<T> UnsafeBufferPointer<T> {
     ///    If the count is not the same, the result is `undefined behavior`.
     ///
     /// - Initialized elements will not be dropped when shrinking the memory space.
-    ///   If the elements are not of trivial type, or not dropped properly, this might cause
-    ///   memory leaks.
+    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not 
+    ///   dropped properly before calling this method.
     ///
     /// - `new_count` must be greater than `0`.
     ///    Allocating memory space with `0` count will be `undefined behavior`.
@@ -372,8 +372,8 @@ impl<T> UnsafeBufferPointer<T> {
     /// - `count` must be within the bounds of the allocated memory space.
     ///
     /// - Initialized elements will be overwritten **without** calling `drop`.
-    ///   This might cause memory leaks if the elements are not of trivial type,
-    ///   or not dropped properly.
+    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not 
+    ///   dropped properly before calling this method.
     ///
     /// # Time Complexity
     ///

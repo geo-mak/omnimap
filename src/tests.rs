@@ -27,32 +27,32 @@ mod map_tests {
         let mut map = OmniMap::new();
 
         // Empty map.
-        assert_eq!(map.current_load(), 0.0);
+        assert_eq!(map.load_factor(), 0.0);
 
         map.insert(1, 2);
 
         // Full capacity 1.
-        assert_eq!(map.current_load(), 1.0);
+        assert_eq!(map.load_factor(), 1.0);
 
         map.insert(2, 3);
 
         // Full capacity 2.
-        assert_eq!(map.current_load(), 1.0);
+        assert_eq!(map.load_factor(), 1.0);
 
         map.insert(3, 4);
 
         // 3/4 of new capacity 4, which is exactly the threshold.
-        assert_eq!(map.current_load(), 0.75);
+        assert_eq!(map.load_factor(), 0.75);
 
         map.insert(4, 5);
 
         // Full capacity 4.
-        assert_eq!(map.current_load(), 1.0);
+        assert_eq!(map.load_factor(), 1.0);
 
         map.insert(5, 6);
 
         // 5/8 of new capacity 8.
-        assert_eq!(map.current_load(), 0.625);
+        assert_eq!(map.load_factor(), 0.625);
     }
 
     #[test]

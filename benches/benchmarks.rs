@@ -102,7 +102,7 @@ fn bench_remove_hashmap(c: &mut Criterion) {
 }
 
 fn bench_pop_first(c: &mut Criterion) {
-    c.bench_function("pop first", |b| {
+    c.bench_function("pop front", |b| {
         let mut map = OmniMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
