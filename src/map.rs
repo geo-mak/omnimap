@@ -88,7 +88,7 @@ where
     // 75% threshold for growing.
     const MAX_LOAD_FACTOR: f64 = 0.75;
     const DEFAULT_CAPACITY: usize = 16;
-    
+
     /// Creates a new `OmniMap` with `0` initial capacity.
     ///
     /// # Examples
@@ -396,19 +396,6 @@ where
         }
     }
 
-    /// This method will grow the capacity of the map if the current load exceeds the load factor.
-    /// If the capacity is zero, it will allocate the initial capacity without reindexing.
-    #[inline(always)]
-    fn ensure_capacity(&mut self) {
-        if BranchOptimizer::unlikely(self.cap == 0) {
-            // Allocate initial capacity.
-            self.allocate(1);
-        } else {
-            // This will reindex the map if the capacity is grown.
-            self.maybe_grow();
-        }
-    }
-
     /// Finds the slot of the key in the index.
     ///
     /// # Returns
@@ -418,7 +405,10 @@ where
     /// - `entry_index`: `Some(index)` if the key exists, `None` if the key does not exist.
     ///
     fn find(&self, hash: usize, key: &K) -> FindResult {
-        debug_assert!(self.cap > 0, "Logic error: find is called while the map is unallocated");
+        debug_assert!(
+            self.cap > 0,
+            "Logic error: find is called while the map is unallocated"
+        );
         let mut slot_index = hash % self.cap;
         let mut step = 0;
         unsafe {
@@ -459,6 +449,98 @@ where
             entry_index: None,
         }
     }
+    
+    /// Inserts a key-value pair into the map.
+    /// If the map did not have this key present, `None` is returned.
+    /// If the map did have this key present, the value is updated, and the old value is returned.
+    ///
+    /// This method is semantically equivalent to [`insert`] method, except that it doesn't
+    /// allocate capacity automatically.
+    ///
+    /// This method can be useful if a different capacity management strategy is needed other than
+    /// the implemented one used with [`insert`].
+    ///
+    /// [`insert`]: OmniMap::insert
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure that the map has been initialized and its load factor is less than `1.0`
+    /// before calling this method.
+    ///
+    /// # Parameters
+    ///
+    /// - `key`: The key to insert or update.
+    ///
+    /// - `value`: The value to associate with the key.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(1) Amortized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omni_map::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// // Map must be initialized and has enough capacity before insertion.
+    /// map.reserve(2);
+    ///
+    /// unsafe {
+    ///  // When inserting a new key-value pair, None is returned
+    ///  map.insert_unchecked(1, "a");
+    ///  map.insert_unchecked(2, "b");
+    /// }
+    ///
+    /// assert_eq!(map.get(&1), Some(&"a"));
+    /// assert_eq!(map.get(&2), Some(&"b"));
+    ///
+    /// // Update the value for an existing key
+    /// let old_value = unsafe {
+    ///  map.insert_unchecked(1, "c")
+    /// };
+    ///
+    /// // The old value is returned
+    /// assert_eq!(old_value, Some("a"));
+    ///
+    /// // The value is updated
+    /// assert_eq!(map.get(&1), Some(&"c"));
+    /// ```
+    #[inline]
+    pub unsafe fn insert_unchecked(&mut self, key: K, value: V) -> Option<V> {
+        let hash = self.make_hash(&key);
+
+        // Find the slot of the key, and possibly the entry index.
+        let result = self.find(hash, &key);
+
+        // Key exists, update the value and return the old one.
+        if let Some(index) = result.entry_index {
+            let old_value: V =
+                unsafe { mem::replace(&mut self.entries.load_mut(index).value, value) };
+            return Some(old_value);
+        };
+
+        // Key does not exist, insert the new key-value pair.
+        unsafe {
+            // The capacity-management strategy must ensure that the index has empty slots.
+            debug_assert!(
+                matches!(self.index.load(result.slot_index), Slot::Empty),
+                "Logic error: attempt to insert with unempty slot"
+            );
+            // Update the index.
+            self.index
+                .store(result.slot_index, Slot::Occupied(self.len));
+            // Insert the new key-value pair.
+            self.entries.store(self.len, Entry::new(key, value, hash));
+        }
+
+        // Increment the length.
+        self.len += 1;
+
+        // Key was new and inserted.
+        None
+    }
 
     /// Inserts a key-value pair into the map.
     /// If the map did not have this key present, `None` is returned.
@@ -497,40 +579,18 @@ where
     /// // The value is updated
     /// assert_eq!(map.get(&1), Some(&"c"));
     /// ```
+    #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         // Ensure that the map has enough capacity to insert the new key-value pair.
-        self.ensure_capacity();
-
-        let hash = self.make_hash(&key);
-
-        // Find the slot of the key, and possibly the entry index.
-        let result = self.find(hash, &key);
-
-        // Key exists, update the value.
-        if let Some(index) = result.entry_index {
-            let old_value: V =
-                unsafe { mem::replace(&mut self.entries.load_mut(index).value, value) };
-            return Some(old_value);
-        };
-
-        // Key does not exist, insert the new key-value pair.
-        unsafe {
-            // The capacity-management strategy must ensure that the index has empty slots.
-            debug_assert!(
-                matches!(self.index.load(result.slot_index), Slot::Empty),
-                "Logic error: slot is expected to be empty"
-            );
-            // Update the index.
-            self.index
-                .store(result.slot_index, Slot::Occupied(self.len));
-            // Insert the new key-value pair.
-            self.entries.store(self.len, Entry::new(key, value, hash));
+        if BranchOptimizer::unlikely(self.cap == 0) {
+            // Allocate initial capacity.
+            self.allocate(1);
+        } else {
+            // This will reindex the map if the capacity is grown.
+            self.maybe_grow();
         }
 
-        // Increment the length.
-        self.len += 1;
-        // Key was new and inserted.
-        None
+        unsafe { self.insert_unchecked(key, value) }
     }
 
     /// Retrieves a value by its key.
@@ -855,7 +915,7 @@ where
             result.entry_index.is_some(),
             "Logic error: entry exists, but it has no associated slot in the index"
         );
-        
+
         self.len -= 1;
         self.deleted += 1;
 
@@ -902,12 +962,12 @@ where
         let entry_ref = unsafe { self.entries.load(self.len - 1) };
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
-        
+
         debug_assert!(
-            result.entry_index.is_some(), 
+            result.entry_index.is_some(),
             "Logic error: entry exists, but it has no associated slot in the index"
         );
-        
+
         self.len -= 1;
         self.deleted += 1;
 
@@ -1156,7 +1216,7 @@ where
         if self.cap == 0 {
             0.0
         } else {
-            (self.len + self.deleted) as f64 / self.cap as f64    
+            (self.len + self.deleted) as f64 / self.cap as f64
         }
     }
 }
@@ -1500,10 +1560,10 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
             // - index
             // - entries
             // index must be deallocated here and entries shall be deallocated by the iterator.
-            
+
             // Deallocate the index.
             manual_self.index.deallocate(iterator.cap);
-            
+
             // Obtain the pointer of the allocated entries and invalidate the original.
             // This will make the iterator the owner of the allocated memory of the entries,
             // and the one responsible for deallocating it.

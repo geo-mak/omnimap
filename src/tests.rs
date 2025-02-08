@@ -63,6 +63,62 @@ mod map_tests {
         assert_eq!(map.debug_deleted(), 0);
         assert_eq!(map.capacity(), 16);
     }
+    
+    #[test]
+    fn test_map_insert_get_unchecked() {
+        let mut map = OmniMap::new();
+
+        map.reserve(3);
+
+        // Access when the map is empty must return None.
+        assert_eq!(map.get(&1), None);
+
+        unsafe {
+            assert_eq!(map.insert_unchecked(1, 2), None);
+            assert_eq!(map.insert_unchecked(2, 3), None);
+            assert_eq!(map.insert_unchecked(3, 4), None);
+        }
+
+        // Map state.
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.capacity(), 3);
+
+        // Check values.
+        assert_eq!(map.get(&1), Some(&2));
+        assert_eq!(map.get(&2), Some(&3));
+        assert_eq!(map.get(&3), Some(&4));
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "Logic error: find is called while the map is unallocated")]
+    fn test_map_insert_get_unchecked_new() {
+        let mut map = OmniMap::new();
+        unsafe {
+            // find must panic.
+            map.insert_unchecked(1, 2);
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "Logic error: attempt to insert with unempty slot")]
+    fn test_map_insert_get_unchecked_full() {
+        let mut map = OmniMap::new();
+
+        map.reserve(1);
+
+        unsafe {
+            assert_eq!(map.insert_unchecked(1, 2), None);
+
+            // The map is 100% full.
+            assert_eq!(map.load_factor(), 1.0);
+
+            // No room for it, should panic.
+            assert_eq!(map.insert_unchecked(2, 3), None);
+        }
+    }
 
     #[test]
     fn test_map_insert_get() {
@@ -521,13 +577,13 @@ mod map_tests {
         assert_eq!(map.capacity(), 1);
 
         map.insert(1, 1);
-        
+
         // Reserve more capacity in advance.
         map.reserve(10);
 
         // Capacity must be 1 + requested capacity = 11.
         assert_eq!(map.capacity(), 11);
-        
+
         // Inserted data are accessible.
         assert_eq!(map.get(&1), Some(&1));
     }

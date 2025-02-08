@@ -185,13 +185,6 @@ impl<T> UnsafeBufferPointer<T> {
         self.ptr.is_null()
     }
 
-    /// Returns the base address of the `UnsafeBufferPointer`.
-    #[must_use]
-    #[inline(always)]
-    pub(crate) fn address(&self) -> usize {
-        self.ptr.addr()
-    }
-
     /// Sets the pointer to `null` and returns the current pointer.
     ///
     /// # Safety
@@ -273,7 +266,7 @@ impl<T> UnsafeBufferPointer<T> {
     ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
     ///
     /// - Initialized elements will not be dropped before deallocating memory.
-    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not 
+    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not
     ///   dropped properly before calling this method.
     ///
     /// - `allocated_count` must be the same as the actual allocated count of type `T`, which
@@ -303,20 +296,20 @@ impl<T> UnsafeBufferPointer<T> {
     ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
     ///
     /// - `allocated_count` must be the same as the previously allocated `count` of type `T`.
-    ///    If the count is not the same, the result is `undefined behavior`.
+    ///   If the count is not the same, the result is `undefined behavior`.
     ///
     /// - Initialized elements will not be dropped when shrinking the memory space.
-    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not 
+    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not
     ///   dropped properly before calling this method.
     ///
     /// - `new_count` must be greater than `0`.
-    ///    Allocating memory space with `0` count will be `undefined behavior`.
+    ///   Allocating memory space with `0` count will be `undefined behavior`.
     ///
     /// - `new_count` in bytes, when rounded up to the nearest multiple of `align`, must be less
     ///   than or equal to `isize::MAX` bytes.
     ///
     /// - `copy_count` must be within the bounds of the allocated memory space.
-    ///    Copying more elements than the allocated count will cause termination with `SIGSEGV`.
+    ///   Copying more elements than the allocated count will cause termination with `SIGSEGV`.
     ///
     /// These invariants are checked in debug mode only.
     ///
@@ -372,7 +365,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// - `count` must be within the bounds of the allocated memory space.
     ///
     /// - Initialized elements will be overwritten **without** calling `drop`.
-    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not 
+    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not
     ///   dropped properly before calling this method.
     ///
     /// # Time Complexity
@@ -634,7 +627,7 @@ impl<T> UnsafeBufferPointer<T> {
     ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
     ///
     /// - `count` must be within the bounds of the initialized elements.
-    ///    Loading an uninitialized elements as `T` is `undefined behavior`.
+    ///   Loading an uninitialized elements as `T` is `undefined behavior`.
     ///
     /// # Time Complexity
     ///
@@ -1241,7 +1234,7 @@ mod ptr_tests {
             let mut cloned = original.make_clone(5, 3);
 
             // Cloned must have different pointers.
-            assert_ne!(cloned.address(), original.address());
+            assert_ne!(cloned.ptr.addr(), original.ptr.addr());
 
             // The elements in the clone must have the same values as in the original.
             for i in 0..3 {
@@ -1298,7 +1291,7 @@ mod ptr_tests {
             let mut cloned = original.make_clone(3, 3);
 
             // Cloned must have different pointers.
-            assert_ne!(cloned.address(), original.address());
+            assert_ne!(cloned.ptr.addr(), original.ptr.addr());
 
             // The elements in the clone must have the same values as in the original.
             for i in 0..3 {
