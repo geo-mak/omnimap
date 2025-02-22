@@ -5,7 +5,7 @@ use core::ptr;
 
 use std::alloc::{self, alloc};
 
-use crate::opt::BranchOptimizer;
+use crate::opt::branch_prediction;
 
 /// Debug-mode check for the layout size and alignment.
 /// This function is only available in debug builds.
@@ -246,7 +246,7 @@ impl<T> UnsafeBufferPointer<T> {
         let ptr = alloc(new_layout) as *mut T;
 
         // Failure branch.
-        if BranchOptimizer::unlikely(ptr.is_null()) {
+        if branch_prediction::unlikely(ptr.is_null()) {
             alloc::handle_alloc_error(new_layout);
         }
 
@@ -332,7 +332,7 @@ impl<T> UnsafeBufferPointer<T> {
         let new_ptr = alloc(new_layout) as *mut T;
 
         // Success branch.
-        if BranchOptimizer::likely(!new_ptr.is_null()) {
+        if branch_prediction::likely(!new_ptr.is_null()) {
             ptr::copy_nonoverlapping(self.ptr, new_ptr, copy_count);
 
             let current_layout = self.make_layout(allocated_count);

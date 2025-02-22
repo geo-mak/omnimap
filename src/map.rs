@@ -9,7 +9,7 @@ use core::{fmt, mem};
 use std::collections::hash_map::DefaultHasher;
 
 use crate::alloc::UnsafeBufferPointer;
-use crate::opt::BranchOptimizer;
+use crate::opt::branch_prediction;
 
 struct FindResult {
     slot_index: usize,
@@ -339,7 +339,7 @@ where
     fn maybe_grow(&mut self) {
         let load_factor = (self.len + self.deleted) as f64 / self.cap as f64;
 
-        if BranchOptimizer::unlikely(load_factor > Self::MAX_LOAD_FACTOR) {
+        if branch_prediction::unlikely(load_factor > Self::MAX_LOAD_FACTOR) {
             let growth_factor = (self.cap as f64 / Self::MAX_LOAD_FACTOR).ceil() as usize;
 
             // New capacity must be within the range of `usize` and less than or equal to
@@ -381,12 +381,12 @@ where
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        if BranchOptimizer::unlikely(additional == 0) {
+        if branch_prediction::unlikely(additional == 0) {
             return;
         }
 
         // The map must be allocated before expanding capacity (Likely).
-        if BranchOptimizer::unlikely(self.cap == 0) {
+        if branch_prediction::unlikely(self.cap == 0) {
             // Allocate new capacity.
             self.allocate(additional);
         } else {
@@ -582,7 +582,7 @@ where
     #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         // Ensure that the map has enough capacity to insert the new key-value pair.
-        if BranchOptimizer::unlikely(self.cap == 0) {
+        if branch_prediction::unlikely(self.cap == 0) {
             // Allocate initial capacity.
             self.allocate(1);
         } else {
@@ -859,7 +859,7 @@ where
                 self.index.store(result.slot_index, Slot::Deleted);
 
                 // If the entry is the last one, take it without shifting.
-                if BranchOptimizer::unlikely(index == self.len) {
+                if branch_prediction::unlikely(index == self.len) {
                     self.entries.take_no_shift(index)
                 } else {
                     self.decrement_index(index);
@@ -1013,10 +1013,10 @@ where
     pub fn shrink_to(&mut self, capacity: usize) {
         // Capacity must be less than the current capacity and greater than or equal to the number
         // of elements.
-        if BranchOptimizer::likely(capacity >= self.len && capacity < self.cap) {
+        if branch_prediction::likely(capacity >= self.len && capacity < self.cap) {
             // Zero-count allocation is not allowed.
             // If the length is zero, deallocate the memory.
-            if BranchOptimizer::likely(self.len > 0) {
+            if branch_prediction::likely(self.len > 0) {
                 self.reallocate_reindex(capacity);
             } else {
                 self.deallocate();
@@ -1052,10 +1052,10 @@ where
     #[inline]
     pub fn shrink_to_fit(&mut self) {
         // Capacity must be greater than the number of elements.
-        if BranchOptimizer::likely(self.cap > self.len) {
+        if branch_prediction::likely(self.cap > self.len) {
             // Zero-count allocation is not allowed.
             // If the length is zero, deallocate the memory.
-            if BranchOptimizer::likely(self.len > 0) {
+            if branch_prediction::likely(self.len > 0) {
                 self.reallocate_reindex(self.len);
             } else {
                 self.deallocate();

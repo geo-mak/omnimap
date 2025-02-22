@@ -1,8 +1,5 @@
-/// Branching optimizer with collection of compiler hints to prioritize branches over others
-/// and improve branch prediction.
-pub(crate) struct BranchOptimizer;
-
-impl BranchOptimizer {
+/// Compiler hints to prioritize branches over others and improve branch prediction.
+pub(crate) mod branch_prediction {
     #[cold]
     const fn cold_line() {}
 
@@ -15,7 +12,7 @@ impl BranchOptimizer {
         if condition {
             true
         } else {
-            Self::cold_line();
+            cold_line();
             false
         }
     }
@@ -27,7 +24,7 @@ impl BranchOptimizer {
     #[inline(always)]
     pub(crate) const fn unlikely(condition: bool) -> bool {
         if condition {
-            Self::cold_line();
+            cold_line();
             true
         } else {
             false
