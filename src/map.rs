@@ -58,17 +58,17 @@ where
     }
 }
 
-/// An immutable iterable view of the key-value pairs in the map.
+/// An immutable iterable view of the entries in the map.
 pub type IterEntries<'a, K, V> = Map<Iter<'a, Entry<K, V>>, fn(&Entry<K, V>) -> (&K, &V)>;
 
-/// A mutable iterable view of the key-value pairs in the map.
+/// A mutable iterable view of the entries in the map.
 ///
 /// The keys are immutable, only the values can be modified.
 pub type IterEntriesMut<'a, K, V> =
     Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> (&K, &mut V)>;
 
 /// A key-value data structure with hash-based indexing and ordered storage of entries, providing
-/// fast insertion, deletion, and retrieval of key-value pairs.
+/// fast insertion, deletion, and retrieval of entries.
 ///
 /// It offers intuitive and ergonomic APIs inspired by hash maps and vectors, with the added
 /// benefit of predictable iteration order and stable indices.
@@ -85,11 +85,10 @@ impl<K, V> OmniMap<K, V>
 where
     K: Eq + Hash,
 {
-    // 75% threshold for growing.
     const MAX_LOAD_FACTOR: f64 = 0.75;
     const DEFAULT_CAPACITY: usize = 16;
 
-    /// Creates a new `OmniMap` with `0` initial capacity.
+    /// Returns a new `OmniMap` without allocated capacity.
     ///
     /// # Examples
     ///
@@ -114,11 +113,7 @@ where
         }
     }
 
-    /// Creates a new `OmniMap` with the specified capacity.
-    ///
-    /// # Parameters
-    ///
-    /// - `capacity`: The initial capacity of the map.
+    /// Creates a new `OmniMap` with the specified `capacity`.
     ///
     /// # Examples
     ///
@@ -169,7 +164,7 @@ where
         self.cap
     }
 
-    /// Returns the number of key-value pairs in the `OmniMap`.
+    /// Returns the number of entries in the `OmniMap`.
     ///
     /// # Examples
     ///
@@ -231,14 +226,13 @@ where
     ///
     #[inline]
     fn allocate(&mut self, cap: usize) {
-        // Allocate the entries and the index with the initial capacity.
         unsafe {
             self.entries.allocate(cap);
             self.index.allocate(cap);
+            // Write empty slots to the new index.
             self.index.memset_default(cap);
         }
 
-        // Update capacity.
         self.cap = cap;
     }
 
@@ -252,7 +246,6 @@ where
     ///
     #[inline]
     fn deallocate(&mut self) {
-        // Deallocate the entries and the index.
         unsafe {
             self.entries.deallocate(self.cap);
             self.index.deallocate(self.cap);
@@ -267,13 +260,11 @@ where
     /// Builds the index of the map according to the current entries and the capacity of the index.
     /// This method should be called **only** after resetting the index with a new capacity.
     fn build_index(&mut self) {
-        let enumerator = unsafe { self.entries.as_slice(self.len).iter().enumerate() };
-
-        // Build the index of the current entries.
+        let enumerator = unsafe { 
+            self.entries.as_slice(self.len).iter().enumerate() 
+        };
         for (index, entry) in enumerator {
             let mut slot_index = entry.hash % self.cap;
-
-            // Find the next empty slot and set it to occupied.
             loop {
                 let slot = unsafe { self.index.load_mut(slot_index) };
                 match slot {
@@ -326,12 +317,10 @@ where
             // Write empty slots to the new index.
             self.index.memset_default(new_cap);
         }
-
-        // Update the capacity and reset the deleted counter.
+        
         self.cap = new_cap;
         self.deleted = 0;
-
-        // Rebuild the index with the new capacity.
+        
         self.build_index();
     }
 
@@ -348,8 +337,7 @@ where
             let new_cap = growth_factor
                 .checked_next_power_of_two()
                 .unwrap_or(usize::MAX);
-
-            // Reallocate the entries and index with the new capacity and reindex the map.
+            
             self.reallocate_reindex(new_cap);
         }
     }
@@ -385,12 +373,9 @@ where
             return;
         }
 
-        // The map must be allocated before expanding capacity (Likely).
         if branch_prediction::unlikely(self.cap == 0) {
-            // Allocate new capacity.
             self.allocate(additional);
         } else {
-            // Reallocate the entries and index with the new capacity and reindex the map.
             let new_cap = self.cap.checked_add(additional).unwrap_or(usize::MAX);
             self.reallocate_reindex(new_cap);
         }
@@ -418,14 +403,12 @@ where
             while step < self.cap {
                 // This is safe because index is always initialized as long the map is allocated.
                 match *self.index.load(slot_index) {
-                    // Slot is empty, key does not exist.
                     Slot::Empty => {
                         return FindResult {
                             slot_index,
                             entry_index: None,
                         };
                     }
-                    // Slot is occupied, check if the key matches.
                     Slot::Occupied(index) => {
                         if self.entries.load(index).key == *key {
                             return FindResult {
@@ -434,15 +417,14 @@ where
                             };
                         }
                     }
-                    // Deleted must be treated as occupied, because it might have been occupied
-                    // by a key with the same hash, and the searched key might be in the next slot.
                     Slot::Deleted => {}
                 }
-                // Search further until finding a key match or encountering an empty slot.
+
                 slot_index = (slot_index + 1) % self.cap;
                 step += 1;
             }
         }
+        
         // This would the case only if the index is full and the key does not exist.
         FindResult {
             slot_index,
@@ -458,7 +440,7 @@ where
     /// allocate capacity automatically.
     ///
     /// This method can be useful if a different capacity management strategy is needed other than
-    /// the implemented one used with [`insert`].
+    /// the one used in [`insert`].
     ///
     /// [`insert`]: OmniMap::insert
     ///
@@ -466,6 +448,9 @@ where
     ///
     /// Caller must ensure that the map has been initialized and its load factor is less than `1.0`
     /// before calling this method.
+    ///
+    /// Besides ensuring available capacity, caller must take into account that using very high
+    /// load factor can cause severe degradation of lookup performance.
     ///
     /// # Parameters
     ///
@@ -511,7 +496,6 @@ where
     pub unsafe fn insert_unchecked(&mut self, key: K, value: V) -> Option<V> {
         let hash = self.make_hash(&key);
 
-        // Find the slot of the key, and possibly the entry index.
         let result = self.find(hash, &key);
 
         // Key exists, update the value and return the old one.
@@ -528,14 +512,13 @@ where
                 matches!(self.index.load(result.slot_index), Slot::Empty),
                 "Logic error: attempt to insert with unempty slot"
             );
-            // Update the index.
+
             self.index
                 .store(result.slot_index, Slot::Occupied(self.len));
-            // Insert the new key-value pair.
+
             self.entries.store(self.len, Entry::new(key, value, hash));
         }
 
-        // Increment the length.
         self.len += 1;
 
         // Key was new and inserted.
@@ -581,23 +564,16 @@ where
     /// ```
     #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
-        // Ensure that the map has enough capacity to insert the new key-value pair.
         if branch_prediction::unlikely(self.cap == 0) {
-            // Allocate initial capacity.
             self.allocate(1);
         } else {
-            // This will reindex the map if the capacity is grown.
             self.maybe_grow();
         }
 
         unsafe { self.insert_unchecked(key, value) }
     }
 
-    /// Retrieves a value by its key.
-    ///
-    /// # Parameters
-    ///
-    /// - `key`: The key for which to retrieve the value.
+    /// Retrieves a value by its `key`.
     ///
     /// # Returns
     ///
@@ -632,21 +608,15 @@ where
 
         let hash = self.make_hash(key);
 
-        // Key exists, return a reference to the value.
         if let Some(index) = self.find(hash, key).entry_index {
             let value = unsafe { &self.entries.load(index).value };
             return Some(value);
         }
 
-        // Key was not found.
         None
     }
 
-    /// Retrieves a mutable reference to a value by its key.
-    ///
-    /// # Parameters
-    ///
-    /// - `key`: The key for which to retrieve the mutable reference to the value.
+    /// Retrieves a mutable reference to a value by its `key`.
     ///
     /// # Returns
     ///
@@ -685,13 +655,11 @@ where
 
         let hash = self.make_hash(key);
 
-        // Key exists, return a mutable reference to the value.
         if let Some(index) = self.find(hash, key).entry_index {
             let value = unsafe { &mut self.entries.load_mut(index).value };
             return Some(value);
         }
 
-        // Key was not found.
         None
     }
 
@@ -726,7 +694,6 @@ where
             return None;
         }
 
-        // This is safe because the map is not empty.
         let entry = unsafe { self.entries.load_first() };
 
         Some((&entry.key, &entry.value))
@@ -763,17 +730,12 @@ where
             return None;
         }
 
-        // This is safe because the map is not empty.
         let entry = unsafe { self.entries.load(self.len - 1) };
 
         Some((&entry.key, &entry.value))
     }
 
-    /// Returns `true` if the map contains a value for the specified key.
-    ///
-    /// # Parameters
-    ///
-    /// - `key`: The key to check for.
+    /// Returns `true` if the map contains a value for the specified `key`.
     ///
     /// # Time Complexity
     ///
@@ -799,17 +761,13 @@ where
         self.get(key).is_some()
     }
 
-    /// Removes an entry by its key.
-    ///
-    /// # Parameters
-    ///
-    /// - `key`: The key to remove.
+    /// Removes an entry by its `key`.
     ///
     /// # Returns
     ///
-    /// - `Some(value)`: If the key is found and removed.
+    /// - `Some(value)`: If key's entry is found and removed.
     ///
-    /// - `None`: If the key does not exist.
+    /// - `None`: If the key does not have entry.
     ///
     /// # Time Complexity
     ///
@@ -867,7 +825,6 @@ where
                 }
             };
 
-            // Return the value of the removed entry.
             return Some(entry.value);
         }
 
@@ -983,10 +940,6 @@ where
     /// In order to take effect, `capacity` must be less than the current capacity
     /// and greater than or equal to the number of elements in the map.
     ///
-    /// # Parameters
-    ///
-    /// - `capacity`: The new capacity of the map.
-    ///
     /// # Time Complexity
     ///
     /// _O_(n) on average.
@@ -1011,8 +964,6 @@ where
     /// ```
     #[inline]
     pub fn shrink_to(&mut self, capacity: usize) {
-        // Capacity must be less than the current capacity and greater than or equal to the number
-        // of elements.
         if branch_prediction::likely(capacity >= self.len && capacity < self.cap) {
             // Zero-count allocation is not allowed.
             // If the length is zero, deallocate the memory.
@@ -1051,7 +1002,6 @@ where
     /// ```
     #[inline]
     pub fn shrink_to_fit(&mut self) {
-        // Capacity must be greater than the number of elements.
         if branch_prediction::likely(self.cap > self.len) {
             // Zero-count allocation is not allowed.
             // If the length is zero, deallocate the memory.
@@ -1063,7 +1013,7 @@ where
         }
     }
 
-    /// Clears the map, removing all key-value pairs.
+    /// Clears the map, removing all entries.
     /// The capacity of the map remains unchanged.
     ///
     /// # Time Complexity
@@ -1092,18 +1042,15 @@ where
         }
 
         unsafe {
-            // Range: [0, len - 1]
             self.entries.drop_initialized(self.len);
-            // Range: [0, cap - 1]
             self.index.memset_default(self.cap);
         }
 
-        // Reset the length and the deleted counter.
         self.len = 0;
         self.deleted = 0;
     }
 
-    /// Returns an iterator over the entries in the `OmniMap`.
+    /// Returns an iterator over the current entries.
     ///
     /// This method makes it safe to iterate over the entries without worrying about the state of
     /// the pointer and to trick the compiler to return empty iterator without type inference
@@ -1127,7 +1074,7 @@ where
         unsafe { self.entries.as_slice_mut(self.len).iter_mut() }
     }
 
-    /// Returns an iterator over the key-value pairs in the `OmniMap`.
+    /// Returns an iterator over the entries in the `OmniMap`.
     ///
     /// # Examples
     ///
@@ -1146,7 +1093,7 @@ where
         self.iter_entries().map(|entry| (&entry.key, &entry.value))
     }
 
-    /// Returns a mutable iterator over the key-value pairs in the `OmniMap`.
+    /// Returns a mutable iterator over the entries in the `OmniMap`.
     ///
     /// # Examples
     ///
@@ -1210,7 +1157,9 @@ where
     }
 
     /// Returns the current load factor.
-    /// If capacity is `0`, `0.0` will be returned.
+    ///
+    /// If capacity is `0`, `0.0` will be returned, which implies that `0.0` as a result is not an
+    /// indicator for available capacity. Use `capacity()` method for that particular case.
     #[inline(always)]
     pub const fn load_factor(&self) -> f64 {
         if self.cap == 0 {
@@ -1226,7 +1175,7 @@ impl<K, V> Drop for OmniMap<K, V> {
         if self.cap == 0 {
             return;
         }
-        // Cap > 0 implies that the entries and index are allocated.
+        // (Cap > 0) -> entries and index are allocated.
         unsafe {
             // This call is safe even if the length is zero.
             self.entries.drop_initialized(self.len);
@@ -1262,19 +1211,11 @@ where
 impl<K, V> Index<usize> for OmniMap<K, V> {
     type Output = V;
 
-    /// Returns immutable reference to the value at the specified index.
-    ///
-    /// # Parameters
-    ///
-    /// - `index`: The index of the value to retrieve.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the value at the specified index.
+    /// Returns immutable reference to the value at the specified `index`.
     ///
     /// # Panics
     ///
-    /// If the index is out of bounds.
+    /// If the given index is out of bounds.
     ///
     /// # Examples
     ///
@@ -1289,26 +1230,18 @@ impl<K, V> Index<usize> for OmniMap<K, V> {
     /// assert_eq!(map[0], "a");
     /// assert_eq!(map[1], "b");
     /// ```
-    fn index(&self, index: usize) -> &Self::Output {
+    fn index(&self, index: usize) -> &V {
         assert!(index < self.len, "Index out of bounds.");
         unsafe { &self.entries.load(index).value }
     }
 }
 
 impl<K, V> IndexMut<usize> for OmniMap<K, V> {
-    /// Returns mutable reference to the value at the specified index.
-    ///
-    /// # Parameters
-    ///
-    /// - `index`: The index of the value to retrieve.
-    ///
-    /// # Returns
-    ///
-    /// A mutable reference to the value at the specified index.
+    /// Returns mutable reference to the value at the specified `index`.
     ///
     /// # Panics
     ///
-    /// If the index is out of bounds.
+    /// If the given index is out of bounds.
     ///
     /// # Examples
     ///
@@ -1326,7 +1259,7 @@ impl<K, V> IndexMut<usize> for OmniMap<K, V> {
     /// assert_eq!(map[0], "c");
     /// assert_eq!(map[1], "d");
     /// ```
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+    fn index_mut(&mut self, index: usize) -> &mut V {
         assert!(index < self.len, "Index out of bounds.");
         unsafe { &mut self.entries.load_mut(index).value }
     }
@@ -1339,7 +1272,7 @@ where
     type Item = (&'a K, &'a V);
     type IntoIter = IterEntries<'a, K, V>;
 
-    /// Returns an iterator over the key-value pairs in the `OmniMap`.
+    /// Returns an iterator over the entries.
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
@@ -1352,7 +1285,7 @@ where
     type Item = (&'a K, &'a mut V);
     type IntoIter = IterEntriesMut<'a, K, V>;
 
-    /// Returns a mutable iterator over the key-value pairs in the `OmniMap`.
+    /// Returns a mutable iterator over the entries.
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
     }
@@ -1384,12 +1317,12 @@ where
     /// If capacity is a concern, use the `clone_compact` method to create a clone with a capacity
     /// equal to the number of elements.
     fn clone(&self) -> Self {
-        // Return an unallocated clone if the original is unallocated.
+        // Return an unallocated instance if the original is unallocated.
         if self.cap == 0 {
             return Self::new();
         }
 
-        // Capacity > 0 -> entries and index are allocated.
+        // (Capacity > 0) -> entries and index are allocated.
         unsafe {
             OmniMap {
                 entries: self.entries.make_clone(self.cap, self.len),
@@ -1407,16 +1340,11 @@ where
     K: Eq + Hash + Clone,
     V: Clone,
 {
-    /// Creates a compact clone of the current instance.
+    /// Returns a compact clone of the current instance.
     ///
     /// This method creates a clone of the `OmniMap` where the capacity of the internal
     /// storage is reduced to fit the current number of elements. This can help reduce
     /// memory usage if the map has a lot of unused capacity.
-    ///
-    /// # Returns
-    ///
-    /// A new `OmniMap` instance with the same elements as the original, but with a
-    /// capacity equal to the number of elements.
     ///
     /// # Examples
     ///
@@ -1436,12 +1364,11 @@ where
     /// assert_eq!(compact_clone.get(&2), Some(&"b"));
     /// ```
     pub fn clone_compact(&self) -> Self {
-        // Return an empty clone if the original is empty.
         if self.is_empty() {
             return Self::new();
         }
 
-        // Len > 0 -> capacity > 0 -> entries and index are allocated.
+        // (Len > 0) -> (capacity > 0) -> entries and index are allocated.
         let mut clone = unsafe {
             OmniMap {
                 // Clone the entries with capacity equal to the number of elements.
@@ -1462,7 +1389,7 @@ where
     }
 }
 
-/// An owning iterator over the key-value pairs of an `OmniMap`.
+/// An owning iterator over the entries of an `OmniMap`.
 pub struct OmniMapIntoIter<K, V> {
     entries: UnsafeBufferPointer<Entry<K, V>>,
     cap: usize,
@@ -1474,7 +1401,7 @@ impl<K, V> Iterator for OmniMapIntoIter<K, V> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        // index < len -> len > 0 -> cap > 0 -> pointer != null.
+        // (index < len) -> (len > 0) -> (cap > 0) -> pointer != null.
         if self.index < self.len {
             let item = unsafe {
                 // Safety: The destructor of the iterator must not call drop on this value,
@@ -1496,7 +1423,7 @@ impl<K, V> Drop for OmniMapIntoIter<K, V> {
         }
 
         unsafe {
-            // index < len -> len > 0 && the iterator is not exhausted.
+            // (index < len) -> (len > 0) && the iterator is not exhausted.
             if self.index < self.len {
                 // Drop the remaining entries.
                 self.entries.drop_range(self.index..self.len);
@@ -1512,11 +1439,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
     type Item = (K, V);
     type IntoIter = OmniMapIntoIter<K, V>;
 
-    /// Consumes the `OmniMap` and returns an iterator over its key-value pairs.
-    ///
-    /// # Returns
-    ///
-    /// An iterator that yields key-value pairs in the order they were inserted.
+    /// Consumes the `OmniMap` and returns an iterator over its entries.
     ///
     /// # Examples
     ///
@@ -1554,11 +1477,9 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         // Disable the destructor of the map.
         let mut manual_self = ManuallyDrop::new(self);
 
-        // Len > 0 -> capacity > 0 -> entries and index are allocated.
+        // (Len > 0) -> (capacity > 0) -> entries and index are allocated.
         unsafe {
-            // The fields that need deallocation are:
-            // - index
-            // - entries
+            // The fields that need deallocation are index and entries.
             // index must be deallocated here and entries shall be deallocated by the iterator.
 
             // Deallocate the index.

@@ -23,10 +23,8 @@ use crate::opt::branch_prediction;
 ///
 #[cfg(debug_assertions)]
 const fn debug_layout_size_align(size: usize, align: usize) {
-    // Alignment check
     assert!(align.is_power_of_two(), "Alignment must be a power of two");
 
-    // Size check
     assert!(size > 0, "Allocation size must be greater than 0");
 
     let max_size = (isize::MAX as usize + 1) - align;
@@ -114,7 +112,6 @@ impl<T> UnsafeBufferPointer<T> {
     #[must_use]
     #[inline]
     pub(crate) const fn new() -> Self {
-        // New instance with no allocation.
         UnsafeBufferPointer {
             ptr: ptr::null(),
             _marker: PhantomData,
@@ -137,13 +134,8 @@ impl<T> UnsafeBufferPointer<T> {
     #[must_use]
     #[inline]
     pub(crate) unsafe fn new_allocate(count: usize) -> Self {
-        // New instance with no allocation.
         let mut instance = Self::new();
-
-        // Allocate memory space.
         instance.allocate(count);
-
-        // Return the new instance.
         instance
     }
 
@@ -165,16 +157,9 @@ impl<T> UnsafeBufferPointer<T> {
     where
         T: Default,
     {
-        // New instance with no allocation.
         let mut instance = Self::new();
-
-        // Allocate memory space.
         instance.allocate(count);
-
-        // Set all elements to the default value of T.
         instance.memset_default(count);
-
-        // Return the new instance.
         instance
     }
 
@@ -199,11 +184,7 @@ impl<T> UnsafeBufferPointer<T> {
             ptr: self.ptr,
             _marker: PhantomData,
         };
-
-        // Set the pointer to null.
         self.ptr = ptr::null();
-
-        // Return the current.
         instance
     }
 
@@ -242,7 +223,6 @@ impl<T> UnsafeBufferPointer<T> {
 
         let new_layout = self.make_layout(count);
 
-        // Allocate memory space
         let ptr = alloc(new_layout) as *mut T;
 
         // Failure branch.
@@ -250,7 +230,6 @@ impl<T> UnsafeBufferPointer<T> {
             alloc::handle_alloc_error(new_layout);
         }
 
-        // Update the pointer and count
         self.ptr = ptr;
     }
 
@@ -277,13 +256,10 @@ impl<T> UnsafeBufferPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        // Current layout
-        let layout = self.make_layout(allocated_count);
+        let current_layout = self.make_layout(allocated_count);
 
-        // This API is weird, it takes everything and tells nothing!
-        alloc::dealloc(self.ptr as *mut u8, layout);
+        alloc::dealloc(self.ptr as *mut u8, current_layout);
 
-        // Update the pointer and count
         self.ptr = ptr::null();
     }
 
@@ -328,7 +304,6 @@ impl<T> UnsafeBufferPointer<T> {
         // Debug-mode checked for valid size and alignment.
         let new_layout = self.make_layout(new_count);
 
-        // Allocate new memory space.
         let new_ptr = alloc(new_layout) as *mut T;
 
         // Success branch.
@@ -337,13 +312,10 @@ impl<T> UnsafeBufferPointer<T> {
 
             let current_layout = self.make_layout(allocated_count);
 
-            // Deallocate the current memory space.
             alloc::dealloc(self.ptr as *mut u8, current_layout);
 
-            // Update the pointer.
             self.ptr = new_ptr;
 
-            // Done.
             return;
         };
 
@@ -380,7 +352,6 @@ impl<T> UnsafeBufferPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        // Write the value to all elements
         for i in 0..count {
             ptr::write((self.ptr as *mut T).add(i), T::default());
         }
@@ -497,23 +468,17 @@ impl<T> UnsafeBufferPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        // infallible
         let value;
         {
-            // The source offset.
             let src = (self.ptr as *mut T).add(at);
-
-            // The destination offset.
             let dst = src.add(1);
 
-            // Copy value to the stack.
             value = ptr::read(src);
 
             // Shift everything down to fill in.
             ptr::copy(dst, src, count);
         }
 
-        // Return the removed value.
         // The stack is now responsible for dropping the value.
         value
     }
@@ -540,8 +505,6 @@ impl<T> UnsafeBufferPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        // Return the removed value.
-        // The stack is now responsible for dropping the value.
         ptr::read((self.ptr as *mut T).add(at))
     }
 
@@ -572,8 +535,7 @@ impl<T> UnsafeBufferPointer<T> {
     pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
-
-        // Call drop on each element to release resources.
+        
         ptr::drop_in_place(std::slice::from_raw_parts_mut(self.ptr as *mut T, count));
     }
 
@@ -608,8 +570,7 @@ impl<T> UnsafeBufferPointer<T> {
         debug_assert_allocated(self);
 
         debug_assert!(!range.is_empty(), "Drop range must not be empty");
-
-        // Call drop on each element to release resources.
+        
         ptr::drop_in_place(std::slice::from_raw_parts_mut(
             self.ptr.add(range.start) as *mut T,
             range.end - range.start,
@@ -688,21 +649,19 @@ impl<T: Clone> UnsafeBufferPointer<T> {
 
         #[cfg(debug_assertions)]
         debug_assert_copy_inbounds(allocation_count, clone_count);
-
-        // New instance.
-        let cloned_buffer = Self::new_allocate(allocation_count);
+        
+        let cloned = Self::new_allocate(allocation_count);
 
         // Clone initialized elements.
         unsafe {
             for i in 0..clone_count {
                 let src = self.ptr.add(i);
-                let dst = (cloned_buffer.ptr as *mut T).add(i);
+                let dst = (cloned.ptr as *mut T).add(i);
                 ptr::write(dst, (*src).clone());
             }
         }
-
-        // Done.
-        cloned_buffer
+        
+        cloned
     }
 }
 
@@ -743,7 +702,6 @@ mod ptr_tests {
             // Memory space should have been allocated.
             assert!(!buffer_ptr.is_null());
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -768,7 +726,6 @@ mod ptr_tests {
     fn test_buffer_ptr_allocate() {
         let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
 
-        // Allocate memory space.
         unsafe {
             buffer_ptr.allocate(3);
 
@@ -843,7 +800,6 @@ mod ptr_tests {
                 assert!(matches!(*buffer_ptr.ptr.add(i), Choice::Default))
             }
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -862,7 +818,6 @@ mod ptr_tests {
                 assert!(matches!(*buffer_ptr.ptr.add(i), Choice::Default))
             }
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -901,7 +856,6 @@ mod ptr_tests {
                 assert_eq!(*buffer_ptr.ptr.add(i), i as u8 + 1);
             }
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -932,7 +886,6 @@ mod ptr_tests {
             assert_eq!(*buffer_ptr.load(1), 2);
             assert_eq!(*buffer_ptr.load(2), 3);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -952,7 +905,6 @@ mod ptr_tests {
             // Value should be updated.
             assert_eq!(*buffer_ptr.load(0), 10);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -966,7 +918,6 @@ mod ptr_tests {
 
             assert_eq!(buffer_ptr.load_first(), &1);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -986,7 +937,6 @@ mod ptr_tests {
             // Value should be removed and the next value should be at the offset 0.
             assert_eq!(*buffer_ptr.load(0), 2);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -1006,7 +956,6 @@ mod ptr_tests {
             // The next value should remain at the offset 1.
             assert_eq!(*buffer_ptr.load(1), 2);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -1046,7 +995,6 @@ mod ptr_tests {
             let slice = buffer_ptr.as_slice(3);
             assert_eq!(slice, &[1, 2, 3]);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -1085,7 +1033,6 @@ mod ptr_tests {
             let slice = buffer_ptr.as_slice_mut(3);
             assert_eq!(slice, &mut [1, 2, 3]);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -1134,7 +1081,6 @@ mod ptr_tests {
             // Since the `drop` has been called on all elements, the drop count must be 3.
             assert_eq!(*drop_count.borrow(), 3);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }
@@ -1174,7 +1120,6 @@ mod ptr_tests {
             // Since the `drop` has been called on 3 elements, the drop count must be 3.
             assert_eq!(*drop_count.borrow(), 3);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(5);
         }
     }
@@ -1205,7 +1150,6 @@ mod ptr_tests {
             // so the drop count must be 3.
             assert_eq!(*drop_count.borrow(), 3);
 
-            // Deallocate memory space.
             buffer_ptr.deallocate(3);
         }
     }

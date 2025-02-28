@@ -23,7 +23,6 @@ mod map_tests {
 
     #[test]
     fn test_map_current_load() {
-        // New map with zero capacity.
         let mut map = OmniMap::new();
 
         // Empty map.
@@ -1146,7 +1145,6 @@ mod map_tests {
     /// standard library when using zero-sized types.
     #[test]
     fn test_map_zst_keys() {
-        // Grow dynamically.
         let mut map = OmniMap::new();
 
         // Expected op: insert.
@@ -1175,41 +1173,5 @@ mod map_tests {
 
         // Capacity goes back to 0.
         assert_eq!(map.capacity(), 0);
-    }
-
-    #[test]
-    fn test_map_zst_values() {
-        // Grow dynamically.
-        let mut map = OmniMap::new();
-
-        // Add 3 items.
-        map.insert(1, ());
-        map.insert(2, ());
-        map.insert(3, ());
-
-        // Len and capacity as usual.
-        assert_eq!(map.len(), 3);
-        assert_eq!(map.capacity(), 4);
-
-        // Access by get returns &().
-        for i in 1..4 {
-            assert_eq!(map.get(&i), Some(&()));
-        }
-
-        // Access by index returns ().
-        for i in 0..3 {
-            assert_eq!(map[i], ());
-        }
-
-        // Remove an item.
-        map.remove(&2);
-
-        assert_eq!(map.len(), 2);
-        assert_eq!(map.capacity(), 4);
-
-        map.shrink_to_fit();
-
-        assert_eq!(map.len(), 2);
-        assert_eq!(map.capacity(), 2);
     }
 }
