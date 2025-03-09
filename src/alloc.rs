@@ -535,8 +535,8 @@ impl<T> UnsafeBufferPointer<T> {
     pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
-        
-        ptr::drop_in_place(std::slice::from_raw_parts_mut(self.ptr as *mut T, count));
+
+        ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count));
     }
 
     /// Calls `drop` on the initialized elements in the specified range.
@@ -571,7 +571,7 @@ impl<T> UnsafeBufferPointer<T> {
 
         debug_assert!(!range.is_empty(), "Drop range must not be empty");
         
-        ptr::drop_in_place(std::slice::from_raw_parts_mut(
+        ptr::drop_in_place(ptr::slice_from_raw_parts_mut(
             self.ptr.add(range.start) as *mut T,
             range.end - range.start,
         ));
@@ -594,11 +594,12 @@ impl<T> UnsafeBufferPointer<T> {
     ///
     /// _O_(1).
     ///
+    #[inline(always)]
     pub(crate) const unsafe fn as_slice(&self, count: usize) -> &[T] {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        std::slice::from_raw_parts(self.ptr, count)
+        &*ptr::slice_from_raw_parts(self.ptr, count)
     }
 
     /// Returns a mutable slice over `count` initialized elements starting from the offset `0`.
@@ -618,17 +619,45 @@ impl<T> UnsafeBufferPointer<T> {
     ///
     /// _O_(1).
     ///
+    #[inline(always)]
     pub(crate) const unsafe fn as_slice_mut(&mut self, count: usize) -> &mut [T] {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        std::slice::from_raw_parts_mut(self.ptr as *mut T, count)
+       &mut *ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count)
+    }
+}
+
+impl<T: Copy> UnsafeBufferPointer<T> {
+    /// Creates new `UnsafeBufferPointer` and copies _bitwise_ values in the memory space pointed 
+    /// to by this pointer to the memory space pointed to by the new pointer.
+    ///
+    /// # Safety
+    ///
+    /// - Pointer must be allocated before calling this method.
+    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    ///
+    /// - `count` must be within the bounds of the allocated memory space.
+    ///   Copying more elements than the allocated count will cause termination with `SIGSEGV`.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(n) where `n` is the number (`count`) of values to be copied.
+    #[must_use]
+    #[inline]
+    pub(crate) unsafe fn make_copy(&self, count: usize) -> Self {
+        #[cfg(debug_assertions)]
+        debug_assert_allocated(self);
+
+        let instance = UnsafeBufferPointer::new_allocate(count);
+        ptr::copy_nonoverlapping(self.ptr, instance.ptr as *mut T, count);
+        instance
     }
 }
 
 impl<T: Clone> UnsafeBufferPointer<T> {
-    /// Makes a clone of the `UnsafeBufferPointer` with the `allocation_count` as memory space and
-    /// `clone_count` as the number of initialized elements to clone.
+    /// Creates new `UnsafeBufferPointer` and clones values in the memory space pointed to by this 
+    /// pointer to the memory space pointed to by the new pointer.
     ///
     /// # Safety
     ///
@@ -650,18 +679,17 @@ impl<T: Clone> UnsafeBufferPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_copy_inbounds(allocation_count, clone_count);
         
-        let cloned = Self::new_allocate(allocation_count);
+        let instance = Self::new_allocate(allocation_count);
 
-        // Clone initialized elements.
         unsafe {
             for i in 0..clone_count {
                 let src = self.ptr.add(i);
-                let dst = (cloned.ptr as *mut T).add(i);
+                let dst = (instance.ptr as *mut T).add(i);
                 ptr::write(dst, (*src).clone());
             }
         }
-        
-        cloned
+
+        instance
     }
 }
 
@@ -1165,116 +1193,65 @@ mod ptr_tests {
     }
 
     #[test]
-    fn test_buffer_ptr_clone() {
+    fn test_buffer_ptr_make_copy() {
         unsafe {
-            // Box is non-trivial type.
-            let mut original: UnsafeBufferPointer<Box<u8>> = UnsafeBufferPointer::new_allocate(5);
+            let mut original: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new_allocate(3);
 
             for i in 0..3 {
-                original.store(i, Box::new(i as u8 + 1));
+                original.store(i, i as u8 + 1);
             }
-
-            // Clone without compacting.
-            let mut cloned = original.make_clone(5, 3);
-
-            // Cloned must have different pointers.
-            assert_ne!(cloned.ptr.addr(), original.ptr.addr());
-
-            // The elements in the clone must have the same values as in the original.
+            
+            let mut copied = original.make_copy(3);
+            
+            assert_ne!(copied.ptr.addr(), original.ptr.addr());
+            
             for i in 0..3 {
-                assert_eq!(cloned.load(i), original.load(i));
+                assert_eq!(*copied.load(i), *original.load(i));
             }
-
-            // Allocate more memory for the clone.
-            cloned.reallocate(5, 6, 3);
-
-            // Add a new element to the clone.
-            cloned.store(3, Box::new(4));
-
-            // Mutating the original must not affect the clone.
-            let first_origin = original.load_mut(0);
-            **first_origin = 10;
-
-            // The original must have the new value.
-            assert_eq!(**original.load(0), 10);
-
-            // The cloned must not be affected.
-            assert_eq!(**cloned.load(0), 1);
-
-            // Mutating the clone must not affect the original.
-            let first_cloned = cloned.load_mut(0);
-            **first_cloned = 11;
-
-            // The original must not be affected.
-            assert_eq!(**original.load(0), 10);
-
-            // The cloned must have the new value.
-            assert_eq!(**cloned.load(0), 11);
-
-            // Drop the elements in the original and deallocate memory space.
-            original.drop_initialized(3);
-            original.deallocate(5);
-
-            // Drop the elements in the clone and deallocate memory space.
-            cloned.drop_initialized(4);
-            cloned.deallocate(6);
+            
+            *original.load_mut(0) = 10;
+            assert_eq!(*original.load(0), 10);
+            assert_eq!(*copied.load(0), 1);
+            
+            *copied.load_mut(0) = 11;
+            assert_eq!(*copied.load(0), 11);
+            assert_eq!(*original.load(0), 10);
+            
+            original.deallocate(3);
+            copied.deallocate(3);
         }
     }
 
     #[test]
-    fn test_buffer_ptr_clone_compact() {
+    fn test_buffer_ptr_make_clone() {
         unsafe {
-            // Box is non-trivial type.
-            let mut original: UnsafeBufferPointer<Box<u8>> = UnsafeBufferPointer::new_allocate(5);
+            let mut original: UnsafeBufferPointer<String> = UnsafeBufferPointer::new_allocate(3);
 
             for i in 0..3 {
-                original.store(i, Box::new(i as u8 + 1));
+                original.store(i, (i + 1).to_string());
             }
 
-            // Clone with the length as the count.
             let mut cloned = original.make_clone(3, 3);
-
-            // Cloned must have different pointers.
+            
             assert_ne!(cloned.ptr.addr(), original.ptr.addr());
 
-            // The elements in the clone must have the same values as in the original.
             for i in 0..3 {
-                assert_eq!(cloned.load(i), original.load(i));
+                assert_eq!(**cloned.load(i), **original.load(i));
             }
 
-            // Reallocate memory for the clone.
-            cloned.reallocate(3, 6, 3);
-
-            // Add a new element to the clone.
-            cloned.store(3, Box::new(4));
-
-            // Mutating the original must not affect the clone.
-            let first_origin = original.load_mut(0);
-            **first_origin = 10;
-
-            // The original must have the new value.
-            assert_eq!(**original.load(0), 10);
-
-            // The cloned must not be affected.
-            assert_eq!(**cloned.load(0), 1);
-
-            // Mutating the clone must not affect the original.
-            let first_cloned = cloned.load_mut(0);
-            **first_cloned = 11;
-
-            // The original must not be affected.
-            assert_eq!(**original.load(0), 10);
-
-            // The cloned must have the new value.
-            assert_eq!(**cloned.load(0), 11);
-
-            // Drop the elements in the original and deallocate memory space.
+            original.load_mut(0).push('0');
+            assert_eq!(original.load(0), "10");
+            assert_eq!(cloned.load(0), "1");
+            
+            cloned.load_mut(0).push('1');
+            assert_eq!(cloned.load(0), "11");
+            assert_eq!(original.load(0), "10");
+            
             original.drop_initialized(3);
-            original.deallocate(5);
-
-            // Drop the elements in the clone and deallocate memory space.
-            cloned.drop_initialized(4);
-            cloned.deallocate(6);
+            cloned.drop_initialized(3);
+            
+            original.deallocate(3);
+            cloned.deallocate(3);
         }
     }
 

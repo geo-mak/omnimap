@@ -16,7 +16,7 @@ struct FindResult {
     entry_index: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Slot {
     Empty,
     Deleted,
@@ -1326,7 +1326,7 @@ where
         unsafe {
             OmniMap {
                 entries: self.entries.make_clone(self.cap, self.len),
-                index: self.index.make_clone(self.cap, self.cap),
+                index: self.index.make_copy(self.cap),
                 cap: self.cap,
                 len: self.len,
                 deleted: self.deleted,
