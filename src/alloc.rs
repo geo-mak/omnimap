@@ -501,7 +501,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// _O_(1).
     ///
     #[inline(always)]
-    pub(crate) const unsafe fn take_no_shift(&mut self, at: usize) -> T {
+    pub(crate) const unsafe fn take(&mut self, at: usize) -> T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -570,7 +570,7 @@ impl<T> UnsafeBufferPointer<T> {
         debug_assert_allocated(self);
 
         debug_assert!(!range.is_empty(), "Drop range must not be empty");
-        
+
         ptr::drop_in_place(ptr::slice_from_raw_parts_mut(
             self.ptr.add(range.start) as *mut T,
             range.end - range.start,
@@ -624,12 +624,12 @@ impl<T> UnsafeBufferPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-       &mut *ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count)
+        &mut *ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count)
     }
 }
 
 impl<T: Copy> UnsafeBufferPointer<T> {
-    /// Creates new `UnsafeBufferPointer` and copies _bitwise_ values in the memory space pointed 
+    /// Creates new `UnsafeBufferPointer` and copies _bitwise_ values in the memory space pointed
     /// to by this pointer to the memory space pointed to by the new pointer.
     ///
     /// # Safety
@@ -656,7 +656,7 @@ impl<T: Copy> UnsafeBufferPointer<T> {
 }
 
 impl<T: Clone> UnsafeBufferPointer<T> {
-    /// Creates new `UnsafeBufferPointer` and clones values in the memory space pointed to by this 
+    /// Creates new `UnsafeBufferPointer` and clones values in the memory space pointed to by this
     /// pointer to the memory space pointed to by the new pointer.
     ///
     /// # Safety
@@ -678,7 +678,7 @@ impl<T: Clone> UnsafeBufferPointer<T> {
 
         #[cfg(debug_assertions)]
         debug_assert_copy_inbounds(allocation_count, clone_count);
-        
+
         let instance = Self::new_allocate(allocation_count);
 
         unsafe {
@@ -979,7 +979,7 @@ mod ptr_tests {
             buffer_ptr.store(1, 2);
 
             // Take the first value without shifting the elements.
-            assert_eq!(buffer_ptr.take_no_shift(0), 1);
+            assert_eq!(buffer_ptr.take(0), 1);
 
             // The next value should remain at the offset 1.
             assert_eq!(*buffer_ptr.load(1), 2);
@@ -1200,23 +1200,23 @@ mod ptr_tests {
             for i in 0..3 {
                 original.store(i, i as u8 + 1);
             }
-            
+
             let mut copied = original.make_copy(3);
-            
+
             assert_ne!(copied.ptr.addr(), original.ptr.addr());
-            
+
             for i in 0..3 {
                 assert_eq!(*copied.load(i), *original.load(i));
             }
-            
+
             *original.load_mut(0) = 10;
             assert_eq!(*original.load(0), 10);
             assert_eq!(*copied.load(0), 1);
-            
+
             *copied.load_mut(0) = 11;
             assert_eq!(*copied.load(0), 11);
             assert_eq!(*original.load(0), 10);
-            
+
             original.deallocate(3);
             copied.deallocate(3);
         }
@@ -1232,7 +1232,7 @@ mod ptr_tests {
             }
 
             let mut cloned = original.make_clone(3, 3);
-            
+
             assert_ne!(cloned.ptr.addr(), original.ptr.addr());
 
             for i in 0..3 {
@@ -1242,14 +1242,14 @@ mod ptr_tests {
             original.load_mut(0).push('0');
             assert_eq!(original.load(0), "10");
             assert_eq!(cloned.load(0), "1");
-            
+
             cloned.load_mut(0).push('1');
             assert_eq!(cloned.load(0), "11");
             assert_eq!(original.load(0), "10");
-            
+
             original.drop_initialized(3);
             cloned.drop_initialized(3);
-            
+
             original.deallocate(3);
             cloned.deallocate(3);
         }

@@ -62,7 +62,7 @@ mod map_tests {
         assert_eq!(map.debug_deleted(), 0);
         assert_eq!(map.capacity(), 16);
     }
-    
+
     #[test]
     fn test_map_insert_get_unchecked() {
         let mut map = OmniMap::new();
@@ -740,7 +740,9 @@ mod map_tests {
 
         let mut iter = map.into_iter();
 
-        // Calling into_iter on an empty map must return an empty iterator.
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+
         assert_eq!(iter.next(), None);
     }
 
@@ -754,9 +756,24 @@ mod map_tests {
 
         let mut iter: OmniMapIntoIter<u8, u8> = map.into_iter();
 
+        assert_eq!(iter.len(), 3);
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+
         assert_eq!(iter.next(), Some((1, 2)));
+
+        assert_eq!(iter.len(), 2);
+        assert_eq!(iter.size_hint(), (2, Some(2)));
+
         assert_eq!(iter.next(), Some((2, 3)));
+
+        assert_eq!(iter.len(), 1);
+        assert_eq!(iter.size_hint(), (1, Some(1)));
+
         assert_eq!(iter.next(), Some((3, 4)));
+
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+
         assert_eq!(iter.next(), None);
     }
 

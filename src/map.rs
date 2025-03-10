@@ -260,9 +260,7 @@ where
     /// Builds the index of the map according to the current entries and the capacity of the index.
     /// This method should be called **only** after resetting the index with a new capacity.
     fn build_index(&mut self) {
-        let enumerator = unsafe { 
-            self.entries.as_slice(self.len).iter().enumerate() 
-        };
+        let enumerator = unsafe { self.entries.as_slice(self.len).iter().enumerate() };
         for (index, entry) in enumerator {
             let mut slot_index = entry.hash % self.cap;
             loop {
@@ -317,10 +315,10 @@ where
             // Write empty slots to the new index.
             self.index.memset_default(new_cap);
         }
-        
+
         self.cap = new_cap;
         self.deleted = 0;
-        
+
         self.build_index();
     }
 
@@ -337,7 +335,7 @@ where
             let new_cap = growth_factor
                 .checked_next_power_of_two()
                 .unwrap_or(usize::MAX);
-            
+
             self.reallocate_reindex(new_cap);
         }
     }
@@ -424,14 +422,14 @@ where
                 step += 1;
             }
         }
-        
+
         // This would the case only if the index is full and the key does not exist.
         FindResult {
             slot_index,
             entry_index: None,
         }
     }
-    
+
     /// Inserts a key-value pair into the map.
     /// If the map did not have this key present, `None` is returned.
     /// If the map did have this key present, the value is updated, and the old value is returned.
@@ -818,7 +816,7 @@ where
 
                 // If the entry is the last one, take it without shifting.
                 if branch_prediction::unlikely(index == self.len) {
-                    self.entries.take_no_shift(index)
+                    self.entries.take(index)
                 } else {
                     self.decrement_index(index);
                     self.entries.take_shift_left(index, self.len - index)
@@ -930,7 +928,7 @@ where
 
         let entry = unsafe {
             self.index.store(result.slot_index, Slot::Deleted);
-            self.entries.take_no_shift(self.len)
+            self.entries.take(self.len)
         };
 
         Some((entry.key, entry.value))
@@ -1393,26 +1391,41 @@ where
 pub struct OmniMapIntoIter<K, V> {
     entries: UnsafeBufferPointer<Entry<K, V>>,
     cap: usize,
-    len: usize,
-    index: usize,
+    offset: usize,
+    end: usize,
 }
 
 impl<K, V> Iterator for OmniMapIntoIter<K, V> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        // (index < len) -> (len > 0) -> (cap > 0) -> pointer != null.
-        if self.index < self.len {
-            let item = unsafe {
-                // Safety: The destructor of the iterator must not call drop on this value,
+        // (offset < end) -> (end > 0) -> (cap > 0) -> pointer != null.
+        if self.offset < self.end {
+            let entry = unsafe {
+                // Note: The destructor of the iterator must not call drop on this value,
                 // or it will be double-drop.
-                self.entries.take_no_shift(self.index)
+                self.entries.take(self.offset)
             };
-            self.index += 1;
-            Some((item.key, item.value))
+            self.offset += 1;
+            Some((entry.key, entry.value))
         } else {
             None
         }
+    }
+
+    /// Returns the number of remaining entries in the iterator.
+    #[inline(always)]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
+    }
+}
+
+impl<K, V> ExactSizeIterator for OmniMapIntoIter<K, V> {
+    /// Returns the number of remaining entries in the iterator.
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.end - self.offset
     }
 }
 
@@ -1423,10 +1436,10 @@ impl<K, V> Drop for OmniMapIntoIter<K, V> {
         }
 
         unsafe {
-            // (index < len) -> (len > 0) && the iterator is not exhausted.
-            if self.index < self.len {
+            // (offset < end) -> (end > 0) && the iterator is not exhausted.
+            if self.offset < self.end {
                 // Drop the remaining entries.
-                self.entries.drop_range(self.index..self.len);
+                self.entries.drop_range(self.offset..self.end);
             }
 
             // Deallocate memory space.
@@ -1461,8 +1474,8 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         let mut iterator = OmniMapIntoIter {
             entries: UnsafeBufferPointer::new(),
             cap: 0,
-            len: 0,
-            index: 0,
+            end: 0,
+            offset: 0,
         };
 
         // Return an empty iterator if the map is empty.
@@ -1472,7 +1485,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
 
         // Set the capacity and the length.
         iterator.cap = self.cap;
-        iterator.len = self.len;
+        iterator.end = self.len;
 
         // Disable the destructor of the map.
         let mut manual_self = ManuallyDrop::new(self);
