@@ -8,8 +8,8 @@ use std::collections::HashMap;
 // cargo bench --bench benchmarks
 
 fn bench_insert(c: &mut Criterion) {
-    let mut map = OmniMap::new();
-    c.bench_function("insert 1e4 items", |b| {
+    c.bench_function("OmniMap, N=1e4, insert", |b| {
+        let mut map = OmniMap::new();
         b.iter(|| {
             for i in 0..10_000 {
                 black_box(map.insert(i, i));
@@ -19,8 +19,8 @@ fn bench_insert(c: &mut Criterion) {
 }
 
 fn bench_insert_hashmap(c: &mut Criterion) {
-    let mut map = HashMap::new();
-    c.bench_function("insert 1e4 items (std map)", |b| {
+    c.bench_function("HashMap, N=1e4, insert", |b| {
+        let mut map = HashMap::new();
         b.iter(|| {
             for i in 0..10_000 {
                 black_box(map.insert(i, i));
@@ -34,7 +34,7 @@ fn bench_get(c: &mut Criterion) {
     for i in 0..10_000 {
         map.insert(i, i);
     }
-    c.bench_function("get", |b| {
+    c.bench_function("OmniMap, N=1e4, get", |b| {
         b.iter(|| {
             black_box(map.get(&5000));
         })
@@ -46,7 +46,7 @@ fn bench_get_hashmap(c: &mut Criterion) {
     for i in 0..10_000 {
         map.insert(i, i);
     }
-    c.bench_function("get (std map)", |b| {
+    c.bench_function("HashMap, N=1e4, get", |b| {
         b.iter(|| {
             black_box(map.get(&5000));
         })
@@ -58,7 +58,7 @@ fn bench_first(c: &mut Criterion) {
     for i in 0..10_000 {
         map.insert(i, i);
     }
-    c.bench_function("get first", |b| {
+    c.bench_function("OmniMap,  N=1e4, first", |b| {
         b.iter(|| {
             black_box(map.first());
         })
@@ -70,7 +70,7 @@ fn bench_last(c: &mut Criterion) {
     for i in 0..10_000 {
         map.insert(i, i);
     }
-    c.bench_function("get last", |b| {
+    c.bench_function("OmniMap, N=1e4, last", |b| {
         b.iter(|| {
             black_box(map.last());
         })
@@ -78,31 +78,31 @@ fn bench_last(c: &mut Criterion) {
 }
 
 fn bench_remove(c: &mut Criterion) {
-    c.bench_function("remove", |b| {
+    c.bench_function("OmniMap, N=1e4, remove at N/2", |b| {
         let mut map = OmniMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
         }
         b.iter(|| {
-            black_box(map.remove(&0));
+            black_box(map.remove(&5000));
         })
     });
 }
 
 fn bench_remove_hashmap(c: &mut Criterion) {
-    c.bench_function("remove (std map)", |b| {
+    c.bench_function("HashMap, N=1e4, remove at N/2", |b| {
         let mut map = HashMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
         }
         b.iter(|| {
-            black_box(map.remove(&0));
+            black_box(map.remove(&5000));
         })
     });
 }
 
 fn bench_pop_first(c: &mut Criterion) {
-    c.bench_function("pop front", |b| {
+    c.bench_function("OmniMap, N=1e4, pop_front", |b| {
         let mut map = OmniMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
@@ -114,7 +114,7 @@ fn bench_pop_first(c: &mut Criterion) {
 }
 
 fn bench_pop_last(c: &mut Criterion) {
-    c.bench_function("pop", |b| {
+    c.bench_function("OmniMap, N=1e4, pop", |b| {
         let mut map = OmniMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
@@ -127,7 +127,7 @@ fn bench_pop_last(c: &mut Criterion) {
 
 fn bench_shrink_to(c: &mut Criterion) {
     // Capacity is 16384, which is 2048 more than HashMap with 10_000 items
-    c.bench_function("shrink to 11e3", |b| {
+    c.bench_function("OmniMap, N=1e4, shrink_to 11e3", |b| {
         let mut map = OmniMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
@@ -140,7 +140,7 @@ fn bench_shrink_to(c: &mut Criterion) {
 
 fn bench_shrink_to_hashmap(c: &mut Criterion) {
     // Capacity is 14336, which 2048 less than OmniMap with 10_000 items
-    c.bench_function("shrink to 11e3 (std map)", |b| {
+    c.bench_function("HashMap, N=1e4, shrink_to 11e3", |b| {
         let mut map = HashMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
@@ -153,7 +153,7 @@ fn bench_shrink_to_hashmap(c: &mut Criterion) {
 
 fn bench_shrink_to_fit(c: &mut Criterion) {
     // Capacity is 16384, which is 2048 more than HashMap with 10_000 items
-    c.bench_function("shrink to fit", |b| {
+    c.bench_function("OmniMap, N=1e4, shrink_to_fit", |b| {
         let mut map = OmniMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
@@ -166,7 +166,7 @@ fn bench_shrink_to_fit(c: &mut Criterion) {
 
 fn bench_shrink_to_fit_hashmap(c: &mut Criterion) {
     // Capacity is 14336, which 2048 less than OmniMap with 10_000 items
-    c.bench_function("shrink to fit (std map)", |b| {
+    c.bench_function("HashMap, N=1e4, shrink_to_fit", |b| {
         let mut map = HashMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
@@ -178,7 +178,7 @@ fn bench_shrink_to_fit_hashmap(c: &mut Criterion) {
 }
 
 fn bench_clear(c: &mut Criterion) {
-    c.bench_function("clear 1e4", |b| {
+    c.bench_function("OmniMap, N=1e4, clear", |b| {
         let mut map = OmniMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
@@ -190,13 +190,39 @@ fn bench_clear(c: &mut Criterion) {
 }
 
 fn bench_clear_hashmap(c: &mut Criterion) {
-    c.bench_function("clear 1e4 (std map)", |b| {
+    c.bench_function("HashMap, N=1e4, clear", |b| {
         let mut map = HashMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
         }
         b.iter(|| {
             black_box(map.clear());
+        })
+    });
+}
+
+fn bench_cmp_eq(c: &mut Criterion) {
+    let mut map1 = OmniMap::new();
+    for i in 0..10_000 {
+        map1.insert(i, i);
+    }
+    let map2 = map1.clone();
+    c.bench_function("OmniMap, N=1e4, cmp eq", |b| {
+        b.iter(|| {
+            black_box(map1 == map2);
+        })
+    });
+}
+
+fn bench_cmp_eq_hashmap(c: &mut Criterion) {
+    let mut map1 = HashMap::new();
+    for i in 0..10_000 {
+        map1.insert(i, i);
+    }
+    let map2 = map1.clone();
+    c.bench_function("HashMap, N=1e4, cmp eq", |b| {
+        b.iter(|| {
+            black_box(map1 == map2);
         })
     });
 }
@@ -229,4 +255,10 @@ criterion_group!(
     bench_shrink_to_fit_hashmap,
 );
 
-criterion_main!(benches_insert_get, benches_remove_ops, benches_shrink_ops);
+criterion_group!(
+    benches_comparison,
+    bench_cmp_eq,
+    bench_cmp_eq_hashmap,
+);
+
+criterion_main!(benches_insert_get, benches_remove_ops, benches_shrink_ops, benches_comparison);

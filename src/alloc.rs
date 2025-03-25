@@ -94,7 +94,7 @@ const fn debug_assert_copy_inbounds(allocated_count: usize, copy_count: usize) {
 ///
 /// This pointer uses the registered `#[global_allocator]` to allocate memory.
 ///
-/// Using custom allocators will be supported in the future, when the `Allocator` API stabilizes.
+/// Using custom allocators will be supported in the future.
 ///
 pub(crate) struct UnsafeBufferPointer<T> {
     ptr: *const T,
@@ -225,12 +225,13 @@ impl<T> UnsafeBufferPointer<T> {
 
         let ptr = alloc(new_layout) as *mut T;
 
-        // Failure branch.
-        if branch_prediction::unlikely(ptr.is_null()) {
-            alloc::handle_alloc_error(new_layout);
+        // Success branch.
+        if branch_prediction::likely(!ptr.is_null()) {
+            self.ptr = ptr;
+            return;
         }
 
-        self.ptr = ptr;
+        alloc::handle_alloc_error(new_layout);
     }
 
     /// Deallocates the memory space pointed by the pointer.
@@ -308,7 +309,7 @@ impl<T> UnsafeBufferPointer<T> {
 
         // Success branch.
         if branch_prediction::likely(!new_ptr.is_null()) {
-            ptr::copy_nonoverlapping(self.ptr, new_ptr, copy_count);
+            core::intrinsics::copy_nonoverlapping(self.ptr, new_ptr, copy_count);
 
             let current_layout = self.make_layout(allocated_count);
 
@@ -476,7 +477,7 @@ impl<T> UnsafeBufferPointer<T> {
             value = ptr::read(src);
 
             // Shift everything down to fill in.
-            ptr::copy(dst, src, count);
+            core::intrinsics::copy(dst, src, count);
         }
 
         // The stack is now responsible for dropping the value.
@@ -626,9 +627,7 @@ impl<T> UnsafeBufferPointer<T> {
 
         &mut *ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count)
     }
-}
 
-impl<T: Copy> UnsafeBufferPointer<T> {
     /// Creates new `UnsafeBufferPointer` and copies _bitwise_ values in the memory space pointed
     /// to by this pointer to the memory space pointed to by the new pointer.
     ///
@@ -645,17 +644,17 @@ impl<T: Copy> UnsafeBufferPointer<T> {
     /// _O_(n) where `n` is the number (`count`) of values to be copied.
     #[must_use]
     #[inline]
-    pub(crate) unsafe fn make_copy(&self, count: usize) -> Self {
+    pub(crate) unsafe fn make_copy(&self, count: usize) -> Self 
+    where T: Copy
+    {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
         let instance = UnsafeBufferPointer::new_allocate(count);
-        ptr::copy_nonoverlapping(self.ptr, instance.ptr as *mut T, count);
+        core::intrinsics::copy_nonoverlapping(self.ptr, instance.ptr as *mut T, count);
         instance
     }
-}
 
-impl<T: Clone> UnsafeBufferPointer<T> {
     /// Creates new `UnsafeBufferPointer` and clones values in the memory space pointed to by this
     /// pointer to the memory space pointed to by the new pointer.
     ///
@@ -672,7 +671,9 @@ impl<T: Clone> UnsafeBufferPointer<T> {
     ///   Cloning an uninitialized elements as `T` is `undefined behavior`.
     ///
     #[must_use]
-    pub(crate) unsafe fn make_clone(&self, allocation_count: usize, clone_count: usize) -> Self {
+    pub(crate) unsafe fn make_clone(&self, allocation_count: usize, clone_count: usize) -> Self 
+    where T: Clone
+    {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
