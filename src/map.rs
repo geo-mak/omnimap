@@ -281,15 +281,73 @@ where
         }
     }
 
-    #[inline]
-    fn decrement_index(&mut self, after: usize) {
-        let slots = unsafe { self.index.as_slice_mut(self.cap) };
-        for slot in slots {
+    /// Decrements the index of all occupied slots with index value greater than `after` by using
+    /// linear search.
+    ///
+    /// The search domain is `[0, capacity - 1]`.
+    const fn decrement_index_linear(&mut self, after: usize) {
+        let mut i = 0;
+        while i < self.cap {
+            let slot = unsafe { self.index.load_mut(i) };
             if let Slot::Occupied(index) = slot {
                 if *index > after {
-                    *index -= 1;
+                    *index -= 1
                 }
             }
+            i += 1
+        }
+    }
+
+    /// Decrements the index of occupied slots by using the hash value of each entry after `after`
+    /// to find its slot.
+    ///
+    /// The search domain starts from `after` as exclusive bound and ends with `inc_end` as
+    /// inclusive upper bound.
+    const fn decrement_index_hash(&mut self, after: usize, inc_end: usize) {
+        let mut i = after + 1;
+        while i <= inc_end {
+            let entry = unsafe { self.entries.load(i) };
+            let mut slot_index = entry.hash % self.cap;
+
+            'probing: loop {
+                let slot = unsafe { self.index.load_mut(slot_index) };
+                if let Slot::Occupied(index) = slot {
+                    if *index == i {
+                        *index -= 1;
+                        break 'probing;
+                    }
+                }
+
+                slot_index = (slot_index + 1) % self.cap
+            }
+
+            i += 1;
+        }
+    }
+
+    /// Decrements the index of the occupied slots.
+    /// 
+    /// Parameters:
+    ///  - `after`: the position to decrement after it.
+    ///  - `inc_end`: an **inclusive** upper bound for decrementing.
+    ///
+    /// Decrementing applies one of two methods to find the target slots.
+    ///
+    /// - If `inc_end - after` is greater than `capacity/2`, the search for the affected slots will
+    ///   be linear decrementing all encountered occupied slots in the index with value greater than 
+    ///   `after` within the range `[0, capacity - 1]`.
+    ///
+    /// - If `inc_end - after` is less than or equal to `capacity/2`, the search for the target 
+    ///   slots will be very specific using the hash value of the entries starting from offset 
+    ///   `from + 1` to `inc_end` as an inclusive upper bound.
+    #[inline]
+    const fn decrement_index(&mut self, after: usize, inc_end: usize) {
+        let count = inc_end - after;
+        if count > self.cap / 2 {
+            self.decrement_index_linear(after);
+        } else {
+            // It has probing overhead, but it can skip large sequences.
+            self.decrement_index_hash(after, inc_end);
         }
     }
 
@@ -817,7 +875,7 @@ where
                 if branch_prediction::unlikely(index == self.len) {
                     self.entries.take(index)
                 } else {
-                    self.decrement_index(index);
+                    self.decrement_index(index, self.len);
                     self.entries.take_shift_left(index, self.len - index)
                 }
             };
@@ -875,7 +933,7 @@ where
 
         let entry = unsafe {
             self.index.store(result.slot_index, Slot::Deleted);
-            self.decrement_index(0);
+            self.decrement_index(0, self.len);
             self.entries.take_shift_left(0, self.len)
         };
 
