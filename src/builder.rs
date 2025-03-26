@@ -1,8 +1,8 @@
-/// A builder macro that creates a `OmniMap` from a list of key-value pairs.
+/// A declarative constructor that creates an instance from a group of key-value pairs.
 ///
 /// # Examples
 ///
-/// This example creates a `OmniMap` without specifying the capacity.
+/// This example creates an instance without specifying the capacity.
 ///
 /// > Note: Despite capacity not being specified, the map will be created with a pre-allocated
 /// > capacity equal to the number of key-value pairs to avoid resizing.
@@ -24,7 +24,7 @@
 /// assert_eq!(dict.get(&"three"), Some(&3));
 /// ```
 ///
-/// This example creates a `OmniMap` with a specified capacity.
+/// This example creates an instance with the specified capacity.
 ///
 /// The capacity is specified before the key-value pairs.
 ///

@@ -102,7 +102,7 @@ where
     /// ```
     #[must_use]
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         OmniMap {
             // Unallocated pointers.
             entries: UnsafeBufferPointer::new(),
@@ -160,7 +160,7 @@ where
     /// assert_eq!(map.capacity(), 10);
     /// ```
     #[inline]
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.cap
     }
 
@@ -181,7 +181,7 @@ where
     /// assert_eq!(map.len(), 2);
     /// ```
     #[inline]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.len
     }
 
@@ -203,7 +203,7 @@ where
     /// assert!(!map.is_empty());
     /// ```
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
 
@@ -259,25 +259,28 @@ where
 
     /// Builds the index of the map according to the current entries and the capacity of the index.
     /// This method should be called **only** after resetting the index with a new capacity.
-    fn build_index(&mut self) {
-        let enumerator = unsafe { self.entries.as_slice(self.len).iter().enumerate() };
-        for (index, entry) in enumerator {
+    const fn build_index(&mut self) {
+        let mut i = 0;
+        while i < self.len {
+            let entry = unsafe { self.entries.load(i) };
             let mut slot_index = entry.hash % self.cap;
-            loop {
+
+            'probing: loop {
                 let slot = unsafe { self.index.load_mut(slot_index) };
-                match slot {
-                    Slot::Empty => {
-                        *slot = Slot::Occupied(index);
-                        break;
-                    }
-                    Slot::Occupied(_) => {
-                        slot_index = (slot_index + 1) % self.cap;
-                    }
-                    Slot::Deleted => {
-                        unreachable!("Logic error: deleted slot found in the index.");
-                    }
+                if let Slot::Empty = slot {
+                    unsafe { self.index.store(slot_index, Slot::Occupied(i)) };
+                    break 'probing;
                 }
+
+                debug_assert!(
+                    !matches!(slot, Slot::Deleted),
+                    "Logic error: detected deleted slot while building index"
+                );
+
+                slot_index = (slot_index + 1) % self.cap;
             }
+
+            i += 1;
         }
     }
 
@@ -326,7 +329,7 @@ where
     }
 
     /// Decrements the index of the occupied slots.
-    /// 
+    ///
     /// Parameters:
     ///  - `after`: the position to decrement after it.
     ///  - `inc_end`: an **inclusive** upper bound for decrementing.
@@ -334,11 +337,11 @@ where
     /// Decrementing applies one of two methods to find the target slots.
     ///
     /// - If `inc_end - after` is greater than `capacity/2`, the search for the affected slots will
-    ///   be linear decrementing all encountered occupied slots in the index with value greater than 
+    ///   be linear decrementing all encountered occupied slots in the index with value greater than
     ///   `after` within the range `[0, capacity - 1]`.
     ///
-    /// - If `inc_end - after` is less than or equal to `capacity/2`, the search for the target 
-    ///   slots will be very specific using the hash value of the entries starting from offset 
+    /// - If `inc_end - after` is less than or equal to `capacity/2`, the search for the target
+    ///   slots will be very specific using the hash value of the entries starting from offset
     ///   `from + 1` to `inc_end` as an inclusive upper bound.
     #[inline]
     const fn decrement_index(&mut self, after: usize, inc_end: usize) {
@@ -555,9 +558,9 @@ where
 
         // Key exists, update the value and return the old one.
         if let Some(index) = result.entry_index {
-            let old_value: V =
-                unsafe { mem::replace(&mut self.entries.load_mut(index).value, value) };
-            return Some(old_value);
+            let entry = self.entries.load_mut(index);
+            let old_val = mem::replace(&mut entry.value, value);
+            return Some(old_val);
         };
 
         // Key does not exist, insert the new key-value pair.
@@ -565,7 +568,7 @@ where
             // The capacity-management strategy must ensure that the index has empty slots.
             debug_assert!(
                 matches!(self.index.load(result.slot_index), Slot::Empty),
-                "Logic error: attempt to insert with unempty slot"
+                "Logic error: attempt to overwrite a non-empty slot while inserting"
             );
 
             self.index
@@ -744,7 +747,7 @@ where
     /// ```
     #[must_use]
     #[inline]
-    pub fn first(&self) -> Option<(&K, &V)> {
+    pub const fn first(&self) -> Option<(&K, &V)> {
         if self.is_empty() {
             return None;
         }
@@ -780,7 +783,7 @@ where
     /// ```
     #[must_use]
     #[inline]
-    pub fn last(&self) -> Option<(&K, &V)> {
+    pub const fn last(&self) -> Option<(&K, &V)> {
         if self.is_empty() {
             return None;
         }

@@ -102,7 +102,7 @@ mod map_tests {
 
     #[cfg(debug_assertions)]
     #[test]
-    #[should_panic(expected = "Logic error: attempt to insert with unempty slot")]
+    #[should_panic(expected = "Logic error: attempt to overwrite a non-empty slot while inserting")]
     fn test_map_insert_get_unchecked_full() {
         let mut map = OmniMap::new();
 
