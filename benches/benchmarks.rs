@@ -58,7 +58,7 @@ fn bench_first(c: &mut Criterion) {
     for i in 0..10_000 {
         map.insert(i, i);
     }
-    c.bench_function("OmniMap,  N=1e4, first", |b| {
+    c.bench_function("OmniMap, N=1e4, first", |b| {
         b.iter(|| {
             black_box(map.first());
         })
@@ -255,10 +255,11 @@ criterion_group!(
     bench_shrink_to_fit_hashmap,
 );
 
-criterion_group!(
-    benches_comparison,
-    bench_cmp_eq,
-    bench_cmp_eq_hashmap,
-);
+criterion_group!(benches_comparison, bench_cmp_eq, bench_cmp_eq_hashmap,);
 
-criterion_main!(benches_insert_get, benches_remove_ops, benches_shrink_ops, benches_comparison);
+criterion_main!(
+    benches_insert_get,
+    benches_remove_ops,
+    benches_shrink_ops,
+    benches_comparison
+);

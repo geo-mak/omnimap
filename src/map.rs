@@ -399,7 +399,6 @@ where
             // exist, but this is prevented by making capacity the max limit for probing.
             // This case is possible because the user can compact the map anytime.
             while step < self.cap {
-                // This is safe because index is always initialized as long the map is allocated.
                 match *self.index.load(slot_index) {
                     Slot::Empty => {
                         return FindResult {
@@ -1414,6 +1413,10 @@ impl<K, V> Iterator for OmniMapIntoIter<K, V> {
     }
 
     /// Returns the number of remaining entries in the iterator.
+    ///
+    /// This method calls [`len`] internally which you can use directly.
+    ///
+    /// [`len`]: OmniMapIntoIter::len()
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.len();

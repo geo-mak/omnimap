@@ -644,8 +644,9 @@ impl<T> UnsafeBufferPointer<T> {
     /// _O_(n) where `n` is the number (`count`) of values to be copied.
     #[must_use]
     #[inline]
-    pub(crate) unsafe fn make_copy(&self, count: usize) -> Self 
-    where T: Copy
+    pub(crate) unsafe fn make_copy(&self, count: usize) -> Self
+    where
+        T: Copy,
     {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
@@ -671,8 +672,9 @@ impl<T> UnsafeBufferPointer<T> {
     ///   Cloning an uninitialized elements as `T` is `undefined behavior`.
     ///
     #[must_use]
-    pub(crate) unsafe fn make_clone(&self, allocation_count: usize, clone_count: usize) -> Self 
-    where T: Clone
+    pub(crate) unsafe fn make_clone(&self, allocation_count: usize, clone_count: usize) -> Self
+    where
+        T: Clone,
     {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
@@ -1082,8 +1084,7 @@ mod ptr_tests {
     }
 
     #[test]
-    fn test_drop_values() {
-        // Drop counter with 0 count initially.
+    fn test_buffer_ptr_drop_init() {
         let drop_count = Rc::new(RefCell::new(0));
 
         unsafe {
@@ -1104,10 +1105,10 @@ mod ptr_tests {
             buffer_ptr.drop_initialized(0);
             assert_eq!(*drop_count.borrow(), 0);
 
-            // Drop all elements.
+            // Drop all.
             buffer_ptr.drop_initialized(3);
 
-            // Since the `drop` has been called on all elements, the drop count must be 3.
+            // `drop` should have been called on all elements, so the drop count must be 3.
             assert_eq!(*drop_count.borrow(), 3);
 
             buffer_ptr.deallocate(3);
@@ -1150,36 +1151,6 @@ mod ptr_tests {
             assert_eq!(*drop_count.borrow(), 3);
 
             buffer_ptr.deallocate(5);
-        }
-    }
-
-    #[test]
-    fn test_buffer_ptr_drop_values() {
-        // Drop counter with 0 count initially.
-        let drop_count = Rc::new(RefCell::new(0));
-
-        unsafe {
-            let mut buffer_ptr: UnsafeBufferPointer<DropCounter> =
-                UnsafeBufferPointer::new_allocate(3);
-
-            // Reference 3 elements to the same drop counter.
-            for i in 0..3 {
-                buffer_ptr.store(
-                    i,
-                    DropCounter {
-                        count: Rc::clone(&drop_count),
-                    },
-                );
-            }
-
-            // Drop initialized elements.
-            buffer_ptr.drop_initialized(3);
-
-            // Since the `drop` has been called, pointer should have called drop on all elements,
-            // so the drop count must be 3.
-            assert_eq!(*drop_count.borrow(), 3);
-
-            buffer_ptr.deallocate(3);
         }
     }
 
