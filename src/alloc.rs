@@ -76,26 +76,24 @@ const fn debug_assert_copy_inbounds(allocated_count: usize, copy_count: usize) {
 /// `UnsafeBufferPointer` represents an indirect reference to _one or more_ values of type `T`
 /// consecutively in memory.
 ///
-/// `UnsafeBufferPointer` is a typed pointer, not a raw pointer, and it guarantees proper `size`
-/// and `alignment` of `T`, when storing or loading values, but it doesn't guarantee safe operations
-/// with measures such as null pointer checks, bounds checking, or automatic drop of initialized
-/// values.
+/// `UnsafeBufferPointer` guarantees proper `size` and `alignment` of `T`, when storing or loading 
+/// values, but it doesn't guarantee safe operations with measures such as null pointer checks or 
+/// bounds checking.
 ///
-/// Limited checks for invariants are done in debug mode only.
-///
-/// `UnsafeBufferPointer` doesn't store any metadata about the allocated memory space, such as the
-/// size of the allocated memory space and the number of initialized elements, therefore it doesn't
-/// offer automatic memory management.
+/// Moreover, it doesn't store any metadata about the allocated memory space, such as the size of 
+/// the allocated memory space and the number of initialized elements, therefore it doesn't offer 
+/// automatic memory management.
 ///
 /// The user is responsible for allocating, reallocating, and deallocating memory.
 ///
 /// If `T` is not of trivial type, the user is responsible for calling `drop` on the elements to
 /// release resources, before deallocating the memory space.
 ///
+/// Limited checks for invariants are done in debug mode only.
+///
 /// This pointer uses the registered `#[global_allocator]` to allocate memory.
 ///
 /// Using custom allocators will be supported in the future.
-///
 pub(crate) struct UnsafeBufferPointer<T> {
     ptr: *const T,
     _marker: PhantomData<T>,
@@ -450,63 +448,53 @@ impl<T> UnsafeBufferPointer<T> {
         &*self.ptr
     }
 
-    /// Removes and returns the initialized element at the specified offset `at`, and shifts the
-    /// `count` values after `at` to fill the gap.
+    /// Reads and returns the value at the specified offset `at`.
     ///
+    /// This method creates a bitwise copy of `T` with `move` semantics.
+    /// 
     /// # Safety
     ///
     /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
-    ///
-    /// - `at + count` must be within the bounds of the initialized elements.
-    ///   Loading an uninitialized elements as `T` is `undefined behavior`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) where `n` is the number (`count`) of the elements to be shifted.
-    ///
-    pub(crate) const unsafe fn take_shift_left(&mut self, at: usize, count: usize) -> T {
-        #[cfg(debug_assertions)]
-        debug_assert_allocated(self);
-
-        let value;
-        {
-            let src = (self.ptr as *mut T).add(at);
-            let dst = src.add(1);
-
-            value = ptr::read(src);
-
-            // Shift everything down to fill in.
-            core::intrinsics::copy(dst, src, count);
-        }
-
-        // The stack is now responsible for dropping the value.
-        value
-    }
-
-    /// Removes and returns the initialized element at the specified offset `at`.
-    ///
-    /// This method does not shift the elements to fill in the gap, all elements after the offset
-    /// will remain in place.
-    ///
-    /// # Safety
-    ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    ///   Calling this method with a null ptr will cause termination with `SIGABRT`.
     ///
     /// - `at` must be within the bounds of the initialized elements.
     ///   Loading an uninitialized elements as `T` is `undefined behavior`.
     ///
+    /// - If `T` is not a trivial type, the value at this offset can be in an invalid state after
+    ///   calling this method, because it might have been dropped by the caller.
+    ///
     /// # Time Complexity
     ///
     /// _O_(1).
-    ///
     #[inline(always)]
-    pub(crate) const unsafe fn take(&mut self, at: usize) -> T {
+    pub(crate) const unsafe fn read_for_ownership(&mut self, at: usize) -> T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
         ptr::read((self.ptr as *mut T).add(at))
+    }
+
+    /// Shifts the `count` values after `at` to the left, overwriting the value at `at`.
+    ///
+    /// # Safety
+    ///
+    /// - Pointer must be allocated before calling this method.
+    ///   Calling this method with a null ptr will cause termination with `SIGABRT`.
+    ///
+    /// - `at + count` must be within the bounds of the allocated memory space.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(n) where `n` is the number (`count`) of the elements to be shifted.
+    #[allow(dead_code)]
+    pub const unsafe fn shift_left(&mut self, at: usize, count: usize) {
+        #[cfg(debug_assertions)]
+        debug_assert_allocated(self);
+
+        let dst = (self.ptr as *mut T).add(at);
+        let src = dst.add(1);
+
+        core::intrinsics::copy(src, dst, count);
     }
 
     /// Calls `drop` on the initialized elements with the specified `count` starting from the
@@ -556,7 +544,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// - `range` must be within the bounds of the **initialized** elements.
     ///   Calling `drop` on uninitialized elements is `undefined behavior`.
     ///
-    /// - If `T` is not of trivial type, using dropped values after calling this method can cause
+    /// - If `T` is not of trivial type, using dropped values after calling this method is
     ///   `undefined behavior`.
     ///
     /// These invariants are checked in debug mode only.
@@ -954,43 +942,41 @@ mod ptr_tests {
     }
 
     #[test]
-    fn test_buffer_ptr_take_shift() {
+    fn test_buffer_ptr_rfo() {
         unsafe {
             let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new_allocate(3);
-
-            // Store some values.
+            
             buffer_ptr.store(0, 1);
             buffer_ptr.store(1, 2);
-
-            // Take the value and shift the elements after the offset to fill the gap.
-            assert_eq!(buffer_ptr.take_shift_left(0, 2), 1);
-
-            // Value should be removed and the next value should be at the offset 0.
-            assert_eq!(*buffer_ptr.load(0), 2);
-
-            buffer_ptr.deallocate(3);
-        }
-    }
-
-    #[test]
-    fn test_buffer_ptr_take_no_shift() {
-        unsafe {
-            let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new_allocate(3);
-
-            // Store some values.
-            buffer_ptr.store(0, 1);
-            buffer_ptr.store(1, 2);
-
-            // Take the first value without shifting the elements.
-            assert_eq!(buffer_ptr.take(0), 1);
-
-            // The next value should remain at the offset 1.
+            
+            assert_eq!(buffer_ptr.read_for_ownership(0), 1);
+            
             assert_eq!(*buffer_ptr.load(1), 2);
 
             buffer_ptr.deallocate(3);
         }
     }
 
+    #[test]
+    fn test_buffer_ptr_shift_left() {
+        unsafe {
+            let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new_allocate(5);
+            for i in 0..5 {
+                buffer_ptr.store(i, i as u8 + 1);
+            }
+
+            buffer_ptr.shift_left(2, 2);
+
+            assert_eq!(*buffer_ptr.load(0), 1);
+            assert_eq!(*buffer_ptr.load(1), 2);
+            assert_eq!(*buffer_ptr.load(2), 4);
+            assert_eq!(*buffer_ptr.load(3), 5);
+            assert_eq!(*buffer_ptr.load(4), 5);
+
+            buffer_ptr.deallocate(5);
+        }
+    }
+    
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Pointer must not be null")]

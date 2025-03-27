@@ -869,21 +869,19 @@ where
         if let Some(index) = result.entry_index {
             self.len -= 1;
             self.deleted += 1;
-
-            let entry = unsafe {
-                // Mark the slot as deleted.
+            
+            unsafe {
+                let removed = self.entries.read_for_ownership(index).value;
                 self.index.store(result.slot_index, Slot::Deleted);
-
-                // If the entry is the last one, take it without shifting.
-                if branch_prediction::unlikely(index == self.len) {
-                    self.entries.take(index)
-                } else {
+                
+                if branch_prediction::likely(index != self.len) {
+                    // Call order matters.
                     self.decrement_index(index, self.len);
-                    self.entries.take_shift_left(index, self.len - index)
+                    self.entries.shift_left(index, self.len - index);
                 }
+                
+                return Some(removed);
             };
-
-            return Some(entry.value);
         }
 
         // Key was not found.
@@ -933,14 +931,17 @@ where
 
         self.len -= 1;
         self.deleted += 1;
-
-        let entry = unsafe {
+        
+        unsafe {
+            let removed = self.entries.read_for_ownership(0);
             self.index.store(result.slot_index, Slot::Deleted);
+            
+            // Call order matters.
             self.decrement_index(0, self.len);
-            self.entries.take_shift_left(0, self.len)
-        };
+            self.entries.shift_left(0, self.len);
 
-        Some((entry.key, entry.value))
+            Some((removed.key, removed.value))
+        }
     }
 
     /// Pops the last entry from the map.
@@ -985,13 +986,13 @@ where
 
         self.len -= 1;
         self.deleted += 1;
-
-        let entry = unsafe {
+        
+        unsafe {
+            let removed = self.entries.read_for_ownership(self.len);
             self.index.store(result.slot_index, Slot::Deleted);
-            self.entries.take(self.len)
-        };
-
-        Some((entry.key, entry.value))
+            
+            Some((removed.key, removed.value))
+        }
     }
 
     /// Shrinks the capacity of the `OmniMap` to the specified capacity.
@@ -1464,7 +1465,7 @@ impl<K, V> Iterator for OmniMapIntoIter<K, V> {
             let entry = unsafe {
                 // Note: The destructor of the iterator must not call drop on this value,
                 // or it will be double-drop.
-                self.entries.take(self.offset)
+                self.entries.read_for_ownership(self.offset)
             };
             self.offset += 1;
             Some((entry.key, entry.value))
