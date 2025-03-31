@@ -85,7 +85,7 @@ impl<K, V> OmniMap<K, V>
 where
     K: Eq + Hash,
 {
-    const MAX_LOAD_FACTOR: f64 = 0.75;
+    const MAX_LOAD_FACTOR: f64 = 0.875;
     const DEFAULT_CAPACITY: usize = 16;
 
     /// Returns a new `OmniMap` without allocated capacity.
@@ -132,18 +132,20 @@ where
             return Self::new();
         }
 
+        let alloc_cap = Self::allocation_capacity(capacity);
+
         OmniMap {
-            // Allocate the entries with the specified capacity.
-            entries: unsafe { UnsafeBufferPointer::new_allocate(capacity) },
-            // Allocate the index with the specified capacity and initialize it with empty slots.
-            index: unsafe { UnsafeBufferPointer::new_allocate_default(capacity) },
-            cap: capacity,
+            entries: unsafe { UnsafeBufferPointer::new_allocate(alloc_cap) },
+            index: unsafe { UnsafeBufferPointer::new_allocate_default(alloc_cap) },
+            cap: alloc_cap,
             len: 0,
             deleted: 0,
         }
     }
 
-    /// Returns the capacity of the `OmniMap`.
+    /// Returns the allocated _usable_ capacity of the `OmniMap`.
+    ///
+    /// The actual allocated capacity is higher to maintain the load factor.
     ///
     /// # Examples
     ///
@@ -161,7 +163,7 @@ where
     /// ```
     #[inline]
     pub const fn capacity(&self) -> usize {
-        self.cap
+        (self.cap as f64 * Self::MAX_LOAD_FACTOR) as usize
     }
 
     /// Returns the number of entries in the `OmniMap`.
@@ -213,6 +215,13 @@ where
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         hasher.finish() as usize
+    }
+
+    /// Returns the value that maintains the load factor for a given capacity `given`.
+    #[must_use]
+    #[inline(always)]
+    const fn allocation_capacity(given: usize) -> usize {
+        ((given + 1) as f64 / Self::MAX_LOAD_FACTOR) as usize
     }
 
     /// Allocates the specified `cap` and fill index with empty slots.
@@ -354,6 +363,15 @@ where
         }
     }
 
+    /// Resets and rebuilds the index of the map according to the current entries and the capacity
+    /// of the index.
+    #[inline(always)]
+    fn reindex(&mut self) {
+        unsafe { self.index.memset_default(self.cap) };
+        self.deleted = 0;
+        self.build_index();
+    }
+
     /// Shrinks or grows the allocated memory space to the specified `new_cap`.
     ///
     /// This method will also reset the index and rebuild it according to the new capacity.
@@ -383,26 +401,12 @@ where
         self.build_index();
     }
 
-    /// Resizes map with reindexing if the current load exceeds the load factor.
-    fn maybe_grow(&mut self) {
-        let load_factor = (self.len + self.deleted) as f64 / self.cap as f64;
-
-        if branch_prediction::unlikely(load_factor > Self::MAX_LOAD_FACTOR) {
-            let growth_factor = (self.cap as f64 / Self::MAX_LOAD_FACTOR).ceil() as usize;
-
-            // New capacity must be within the range of `usize` and less than or equal to
-            // `isize::MAX`, but error handling is not implemented, because there is no way to
-            // deal with such error without making insert, reserve, etc. return a Result.
-            let new_cap = growth_factor
-                .checked_next_power_of_two()
-                .unwrap_or(usize::MAX);
-
-            self.reallocate_reindex(new_cap);
-        }
-    }
-
     /// Reserves capacity for `additional` more elements.
-    /// The resulting capacity will be equal to `self.capacity() + additional` exactly.
+    ///
+    /// The resulting capacity will be equal to `self.capacity() + additional` or _more_ to
+    /// maintain the load factor.
+    ///
+    /// This method is no-op if `additional` is `0`.
     ///
     /// # Time Complexity
     ///
@@ -418,13 +422,15 @@ where
     /// use omni_map::OmniMap;
     ///
     /// let mut map = OmniMap::new();
+    ///
+    /// // The allocated capacity with first insert is 4.
     /// map.insert(1, "a");
     ///
     /// // Reserve space for 10 more elements
     /// map.reserve(10);
     ///
-    /// // The capacity is now 11
-    /// assert_eq!(map.capacity(), 11);
+    /// // The capacity is now 12
+    /// assert_eq!(map.capacity(), 14);
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
@@ -432,11 +438,34 @@ where
             return;
         }
 
+        // Allocate additional with reserves.
+        let alloc_cap = Self::allocation_capacity(additional);
+
         if branch_prediction::unlikely(self.cap == 0) {
-            self.allocate(additional);
+            self.allocate(alloc_cap);
         } else {
-            let new_cap = self.cap.checked_add(additional).unwrap_or(usize::MAX);
+            let new_cap = self.cap.checked_add(alloc_cap).unwrap_or(usize::MAX);
             self.reallocate_reindex(new_cap);
+        }
+    }
+
+    /// Reserves more capacity if the current load exceeds the max load allowed by the load factor.
+    ///
+    /// It will try to reclaim deleted slots first, before reallocating.
+    fn reserve_if_needed(&mut self) {
+        debug_assert_ne!(self.cap, 0);
+        if branch_prediction::unlikely((self.len + 1 + self.deleted) > self.capacity()) {
+            if branch_prediction::unlikely(self.len < self.cap / 2) {
+                // Reclaiming deleted slots without reallocation.
+                self.reindex();
+            } else {
+                // Reallocation.
+                let new_cap = Self::allocation_capacity(self.cap)
+                    .checked_next_power_of_two()
+                    .unwrap_or(usize::MAX);
+
+                self.reallocate_reindex(new_cap)
+            }
         }
     }
 
@@ -449,17 +478,11 @@ where
     /// - `entry_index`: `Some(index)` if the key exists, `None` if the key does not exist.
     ///
     fn find(&self, hash: usize, key: &K) -> FindResult {
-        debug_assert!(
-            self.cap > 0,
-            "Logic error: find is called while the map is unallocated"
-        );
         let mut slot_index = hash % self.cap;
-        let mut step = 0;
+
         unsafe {
-            // Note: It will be an infinite loop, if all slots are occupied and the key doesn't
-            // exist, but this is prevented by making capacity the max limit for probing.
-            // This case is possible because the user can compact the map anytime.
-            while step < self.cap {
+            // For all valid models: (empty slots exist) -> (unbounded loop can't be infinite).
+            loop {
                 match *self.index.load(slot_index) {
                     Slot::Empty => {
                         return FindResult {
@@ -479,108 +502,8 @@ where
                 }
 
                 slot_index = (slot_index + 1) % self.cap;
-                step += 1;
             }
         }
-
-        // This would the case only if the index is full and the key does not exist.
-        FindResult {
-            slot_index,
-            entry_index: None,
-        }
-    }
-
-    /// Inserts a key-value pair into the map.
-    /// If the map did not have this key present, `None` is returned.
-    /// If the map did have this key present, the value is updated, and the old value is returned.
-    ///
-    /// This method is semantically equivalent to [`insert`] method, except that it doesn't
-    /// allocate capacity automatically.
-    ///
-    /// This method can be useful if a different capacity management strategy is needed other than
-    /// the one used in [`insert`].
-    ///
-    /// [`insert`]: OmniMap::insert
-    ///
-    /// # Safety
-    ///
-    /// Caller must ensure that the map has been initialized and its load factor is less than `1.0`
-    /// before calling this method.
-    ///
-    /// Besides ensuring available capacity, caller must take into account that using very high
-    /// load factor can cause severe degradation of lookup performance.
-    ///
-    /// # Parameters
-    ///
-    /// - `key`: The key to insert or update.
-    ///
-    /// - `value`: The value to associate with the key.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1) Amortized.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omni_map::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    ///
-    /// // Map must be initialized and has enough capacity before insertion.
-    /// map.reserve(2);
-    ///
-    /// unsafe {
-    ///  // When inserting a new key-value pair, None is returned
-    ///  map.insert_unchecked(1, "a");
-    ///  map.insert_unchecked(2, "b");
-    /// }
-    ///
-    /// assert_eq!(map.get(&1), Some(&"a"));
-    /// assert_eq!(map.get(&2), Some(&"b"));
-    ///
-    /// // Update the value for an existing key
-    /// let old_value = unsafe {
-    ///  map.insert_unchecked(1, "c")
-    /// };
-    ///
-    /// // The old value is returned
-    /// assert_eq!(old_value, Some("a"));
-    ///
-    /// // The value is updated
-    /// assert_eq!(map.get(&1), Some(&"c"));
-    /// ```
-    #[inline]
-    pub unsafe fn insert_unchecked(&mut self, key: K, value: V) -> Option<V> {
-        let hash = self.make_hash(&key);
-
-        let result = self.find(hash, &key);
-
-        // Key exists, update the value and return the old one.
-        if let Some(index) = result.entry_index {
-            let entry = self.entries.load_mut(index);
-            let old_val = mem::replace(&mut entry.value, value);
-            return Some(old_val);
-        };
-
-        // Key does not exist, insert the new key-value pair.
-        unsafe {
-            // The capacity-management strategy must ensure that the index has empty slots.
-            debug_assert!(
-                matches!(self.index.load(result.slot_index), Slot::Empty),
-                "Logic error: attempt to overwrite a non-empty slot while inserting"
-            );
-
-            self.index
-                .store(result.slot_index, Slot::Occupied(self.len));
-
-            self.entries.store(self.len, Entry::new(key, value, hash));
-        }
-
-        self.len += 1;
-
-        // Key was new and inserted.
-        None
     }
 
     /// Inserts a key-value pair into the map.
@@ -623,12 +546,38 @@ where
     #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if branch_prediction::unlikely(self.cap == 0) {
-            self.allocate(1);
+            self.allocate(4);
         } else {
-            self.maybe_grow();
+            self.reserve_if_needed();
         }
 
-        unsafe { self.insert_unchecked(key, value) }
+        let hash = self.make_hash(&key);
+
+        let result = self.find(hash, &key);
+
+        // Key exists, update the value and return the old one.
+        if let Some(index) = result.entry_index {
+            let entry = unsafe { self.entries.load_mut(index) };
+            let old_val = mem::replace(&mut entry.value, value);
+            return Some(old_val);
+        };
+
+        unsafe {
+            debug_assert!(
+                matches!(self.index.load(result.slot_index), Slot::Empty),
+                "Logic error: attempt to overwrite a non-empty slot while inserting"
+            );
+
+            self.index
+                .store(result.slot_index, Slot::Occupied(self.len));
+
+            self.entries.store(self.len, Entry::new(key, value, hash));
+        }
+
+        self.len += 1;
+
+        // Key was new and inserted.
+        None
     }
 
     /// Retrieves a value by its `key`.
@@ -869,17 +818,17 @@ where
         if let Some(index) = result.entry_index {
             self.len -= 1;
             self.deleted += 1;
-            
+
             unsafe {
                 let removed = self.entries.read_for_ownership(index).value;
                 self.index.store(result.slot_index, Slot::Deleted);
-                
+
                 if branch_prediction::likely(index != self.len) {
                     // Call order matters.
                     self.decrement_index(index, self.len);
                     self.entries.shift_left(index, self.len - index);
                 }
-                
+
                 return Some(removed);
             };
         }
@@ -931,11 +880,11 @@ where
 
         self.len -= 1;
         self.deleted += 1;
-        
+
         unsafe {
             let removed = self.entries.read_for_ownership(0);
             self.index.store(result.slot_index, Slot::Deleted);
-            
+
             // Call order matters.
             self.decrement_index(0, self.len);
             self.entries.shift_left(0, self.len);
@@ -986,11 +935,11 @@ where
 
         self.len -= 1;
         self.deleted += 1;
-        
+
         unsafe {
             let removed = self.entries.read_for_ownership(self.len);
             self.index.store(result.slot_index, Slot::Deleted);
-            
+
             Some((removed.key, removed.value))
         }
     }
@@ -1023,11 +972,11 @@ where
     /// ```
     #[inline]
     pub fn shrink_to(&mut self, capacity: usize) {
-        if branch_prediction::likely(capacity >= self.len && capacity < self.cap) {
-            // Zero-count allocation is not allowed.
-            // If the length is zero, deallocate the memory.
+        if branch_prediction::likely(capacity >= self.len && capacity < self.capacity()) {
             if branch_prediction::likely(self.len > 0) {
-                self.reallocate_reindex(capacity);
+                // Shrink and keep reserves.
+                let alloc_cap = Self::allocation_capacity(capacity);
+                self.reallocate_reindex(alloc_cap);
             } else {
                 self.deallocate();
             }
@@ -1061,11 +1010,11 @@ where
     /// ```
     #[inline]
     pub fn shrink_to_fit(&mut self) {
-        if branch_prediction::likely(self.cap > self.len) {
-            // Zero-count allocation is not allowed.
-            // If the length is zero, deallocate the memory.
+        if branch_prediction::likely(self.capacity() > self.len) {
             if branch_prediction::likely(self.len > 0) {
-                self.reallocate_reindex(self.len);
+                // Shrink and keep reserves.
+                let alloc_cap = Self::allocation_capacity(self.len);
+                self.reallocate_reindex(alloc_cap);
             } else {
                 self.deallocate();
             }
@@ -1427,14 +1376,17 @@ where
             return Self::new();
         }
 
+        // self.len + reserves
+        let alloc_cap = Self::allocation_capacity(self.len);
+
         // (Len > 0) -> (capacity > 0) -> entries and index are allocated.
         let mut clone = unsafe {
             OmniMap {
                 // Clone the entries with capacity equal to the number of elements.
-                entries: self.entries.make_clone(self.len, self.len),
+                entries: self.entries.make_clone(alloc_cap, self.len),
                 // NOTE: Index can't be compacted because it's length is equal to the capacity.
-                index: UnsafeBufferPointer::new_allocate_default(self.len),
-                cap: self.len,
+                index: UnsafeBufferPointer::new_allocate_default(alloc_cap),
+                cap: alloc_cap,
                 len: self.len,
                 deleted: 0,
             }
@@ -1614,5 +1566,12 @@ impl<K, V> OmniMap<K, V> {
     /// This method is used for testing purposes only and not available in release builds.
     pub(crate) fn debug_deleted(&self) -> usize {
         self.deleted
+    }
+
+    /// Returns the number of allocated slots/entries.
+    ///
+    /// This method is used for testing purposes only and not available in release builds.
+    pub(crate) fn debug_allocated_cap(&self) -> usize {
+        self.cap
     }
 }

@@ -76,12 +76,12 @@ const fn debug_assert_copy_inbounds(allocated_count: usize, copy_count: usize) {
 /// `UnsafeBufferPointer` represents an indirect reference to _one or more_ values of type `T`
 /// consecutively in memory.
 ///
-/// `UnsafeBufferPointer` guarantees proper `size` and `alignment` of `T`, when storing or loading 
-/// values, but it doesn't guarantee safe operations with measures such as null pointer checks or 
+/// `UnsafeBufferPointer` guarantees proper `size` and `alignment` of `T`, when storing or loading
+/// values, but it doesn't guarantee safe operations with measures such as null pointer checks or
 /// bounds checking.
 ///
-/// Moreover, it doesn't store any metadata about the allocated memory space, such as the size of 
-/// the allocated memory space and the number of initialized elements, therefore it doesn't offer 
+/// Moreover, it doesn't store any metadata about the allocated memory space, such as the size of
+/// the allocated memory space and the number of initialized elements, therefore it doesn't offer
 /// automatic memory management.
 ///
 /// The user is responsible for allocating, reallocating, and deallocating memory.
@@ -451,7 +451,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// Reads and returns the value at the specified offset `at`.
     ///
     /// This method creates a bitwise copy of `T` with `move` semantics.
-    /// 
+    ///
     /// # Safety
     ///
     /// - Pointer must be allocated before calling this method.
@@ -945,12 +945,12 @@ mod ptr_tests {
     fn test_buffer_ptr_rfo() {
         unsafe {
             let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new_allocate(3);
-            
+
             buffer_ptr.store(0, 1);
             buffer_ptr.store(1, 2);
-            
+
             assert_eq!(buffer_ptr.read_for_ownership(0), 1);
-            
+
             assert_eq!(*buffer_ptr.load(1), 2);
 
             buffer_ptr.deallocate(3);
@@ -976,7 +976,7 @@ mod ptr_tests {
             buffer_ptr.deallocate(5);
         }
     }
-    
+
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Pointer must not be null")]
