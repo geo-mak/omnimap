@@ -640,7 +640,7 @@ where
     /// ```
     #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
-        if unlikely(self.len + self.deleted >= self.capacity()) {
+        if unlikely(self.len + self.deleted == self.capacity()) {
             self.reclaim_or_reserve();
         }
 
