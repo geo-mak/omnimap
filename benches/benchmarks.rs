@@ -125,6 +125,30 @@ fn bench_pop_last(c: &mut Criterion) {
     });
 }
 
+fn bench_clear(c: &mut Criterion) {
+    c.bench_function("OmniMap, N=1e4, clear", |b| {
+        let mut map = OmniMap::new();
+        for i in 0..10_000 {
+            map.insert(i, i);
+        }
+        b.iter(|| {
+            black_box(map.clear());
+        })
+    });
+}
+
+fn bench_clear_hashmap(c: &mut Criterion) {
+    c.bench_function("HashMap, N=1e4, clear", |b| {
+        let mut map = HashMap::new();
+        for i in 0..10_000 {
+            map.insert(i, i);
+        }
+        b.iter(|| {
+            black_box(map.clear());
+        })
+    });
+}
+
 fn bench_shrink_to(c: &mut Criterion) {
     c.bench_function("OmniMap, N=1e4, shrink_to 11e3", |b| {
         let mut map = OmniMap::new();
@@ -173,26 +197,20 @@ fn bench_shrink_to_fit_hashmap(c: &mut Criterion) {
     });
 }
 
-fn bench_clear(c: &mut Criterion) {
-    c.bench_function("OmniMap, N=1e4, clear", |b| {
-        let mut map = OmniMap::new();
-        for i in 0..10_000 {
-            map.insert(i, i);
-        }
+fn bench_reserve(c: &mut Criterion) {
+    c.bench_function("OmniMap, N=1e4, reserve", |b| {
+        let mut map: OmniMap<i32, i32> = OmniMap::with_capacity(10_000);
         b.iter(|| {
-            black_box(map.clear());
+            black_box(map.reserve(10_000));
         })
     });
 }
 
-fn bench_clear_hashmap(c: &mut Criterion) {
-    c.bench_function("HashMap, N=1e4, clear", |b| {
-        let mut map = HashMap::new();
-        for i in 0..10_000 {
-            map.insert(i, i);
-        }
+fn bench_try_reserve(c: &mut Criterion) {
+    c.bench_function("OmniMap, N=1e4, try_reserve", |b| {
+        let mut map: OmniMap<i32, i32> = OmniMap::with_capacity(10_000);
         b.iter(|| {
-            black_box(map.clear());
+            let _ = black_box(map.try_reserve(10_000));
         })
     });
 }
@@ -244,11 +262,13 @@ criterion_group!(
 );
 
 criterion_group!(
-    benches_shrink_ops,
+    benches_shrink_reserve_ops,
     bench_shrink_to,
     bench_shrink_to_hashmap,
     bench_shrink_to_fit,
     bench_shrink_to_fit_hashmap,
+    bench_reserve,
+    bench_try_reserve,
 );
 
 criterion_group!(benches_comparison, bench_cmp_eq, bench_cmp_eq_hashmap,);
@@ -256,6 +276,6 @@ criterion_group!(benches_comparison, bench_cmp_eq, bench_cmp_eq_hashmap,);
 criterion_main!(
     benches_insert_get,
     benches_remove_ops,
-    benches_shrink_ops,
+    benches_shrink_reserve_ops,
     benches_comparison
 );

@@ -4,7 +4,9 @@ mod map;
 mod tests;
 #[macro_use]
 mod builder;
+mod error;
 mod opt;
 
 // Public exports.
+pub use error::AllocError;
 pub use map::{Entry, OmniMap, OmniMapIntoIter};

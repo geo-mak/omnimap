@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod map_tests {
+    use crate::error::AllocError;
     use crate::map::{OmniMap, OmniMapIntoIter, Slot};
+    use core::cell::RefCell;
+    use std::rc::Rc;
 
     #[test]
     fn test_map_new() {
@@ -542,6 +545,40 @@ mod map_tests {
         assert_eq!(map.get(&2), None);
     }
 
+    #[should_panic(expected = "Allocation Error: capacity overflow")]
+    #[test]
+    fn test_map_capacity_reserve_err() {
+        let mut map: OmniMap<u8, u8> = OmniMap::new();
+        map.reserve(usize::MAX);
+    }
+
+    #[test]
+    fn test_map_capacity_try_reserve() {
+        let mut map = OmniMap::new();
+        assert_eq!(map.capacity(), 0);
+
+        // Try reserve capacity while the map is still unallocated.
+        let result = map.try_reserve(1);
+
+        // Should be fine.
+        assert!(result.is_ok());
+        assert_eq!(map.capacity(), 1);
+        assert_eq!(map.debug_allocated_cap(), 2);
+
+        map.insert(1, 2);
+
+        // Try reserve more capacity than it can hold.
+        let result = map.try_reserve(usize::MAX);
+
+        assert!(matches!(result.err().unwrap(), AllocError::Overflow));
+        assert_eq!(map.capacity(), 1);
+        assert_eq!(map.debug_allocated_cap(), 2);
+
+        // Inserted data are accessible.
+        assert_eq!(map.get(&1), Some(&2));
+        assert_eq!(map.get(&2), None);
+    }
+
     #[test]
     fn test_map_capacity_shrink_to_fit() {
         let mut map = OmniMap::new();
@@ -764,9 +801,6 @@ mod map_tests {
 
         assert_eq!(values, vec![&2, &3, &4]);
     }
-
-    use std::cell::RefCell;
-    use std::rc::Rc;
 
     #[derive(Debug)]
     struct DropCounter {

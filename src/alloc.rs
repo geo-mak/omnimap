@@ -1,11 +1,13 @@
 use core::alloc::Layout;
+use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
 use core::ops::Range;
 use core::ptr;
 
 use std::alloc::{self, alloc};
 
-use crate::opt::branch_prediction;
+use crate::error::{AllocError, OnError};
+use crate::opt::branch_prediction::likely;
 
 /// Debug-mode check for the layout size and alignment.
 /// This function is only available in debug builds.
@@ -133,8 +135,11 @@ impl<T> UnsafeBufferPointer<T> {
     #[inline]
     pub(crate) unsafe fn new_allocate(count: usize) -> Self {
         let mut instance = Self::new();
-        instance.allocate(count);
-        instance
+        match instance.allocate(count, OnError::NoReturn) {
+            Ok(_) => instance,
+            // Hints the compiler that the error branch can be eliminated from the call chain.
+            Err(_) => unreachable_unchecked(),
+        }
     }
 
     /// Creates a new `UnsafeBufferPointer` with the specified `count` of type `T` and populates
@@ -156,9 +161,13 @@ impl<T> UnsafeBufferPointer<T> {
         T: Default,
     {
         let mut instance = Self::new();
-        instance.allocate(count);
-        instance.memset_default(count);
-        instance
+        match instance.allocate(count, OnError::NoReturn) {
+            Ok(_) => {
+                instance.memset_default(count);
+                instance
+            }
+            Err(_) => unreachable_unchecked(),
+        }
     }
 
     /// Checks if the `UnsafeBufferPointer` is null.
@@ -188,11 +197,12 @@ impl<T> UnsafeBufferPointer<T> {
 
     /// Creates a new layout for the specified `count` of type `T`.
     ///
-    /// This method checks for valid size and alignment in debug mode only.
+    /// This method doesn't check for overflow and checks for valid size and alignment in debug
+    /// mode only.
     ///
     #[must_use]
     #[inline(always)]
-    const unsafe fn make_layout(&self, count: usize) -> Layout {
+    const unsafe fn make_layout_unchecked(&self, count: usize) -> Layout {
         let size = count.unchecked_mul(Self::T_SIZE);
 
         #[cfg(debug_assertions)]
@@ -201,7 +211,30 @@ impl<T> UnsafeBufferPointer<T> {
         Layout::from_size_align_unchecked(size, Self::T_ALIGN)
     }
 
+    /// Creates a new layout for the specified `count` of type `T`.
+    ///
+    /// This method checks for overflow in release mode and for valid size and alignment in debug
+    /// mode only.
+    ///
+    #[inline(always)]
+    const unsafe fn make_layout(
+        &self,
+        count: usize,
+        on_err: OnError,
+    ) -> Result<Layout, AllocError> {
+        match count.checked_mul(Self::T_SIZE) {
+            Some(size) => {
+                #[cfg(debug_assertions)]
+                debug_layout_size_align(size, Self::T_ALIGN);
+                Ok(Layout::from_size_align_unchecked(size, Self::T_ALIGN))
+            }
+            None => Err(on_err.overflow()),
+        }
+    }
+
     /// Allocates memory space for the specified `count` of type `T`.
+    ///
+    /// This method handles allocation error according to the error handling context `on_err`.
     ///
     /// # Safety
     ///
@@ -215,21 +248,95 @@ impl<T> UnsafeBufferPointer<T> {
     /// - `count` in bytes, when rounded up to the nearest multiple of `align`, must be less than
     ///   or equal to `isize::MAX` bytes.
     ///
-    pub(crate) unsafe fn allocate(&mut self, count: usize) {
+    /// # Returns
+    ///
+    /// `Ok(())`: If the allocation was successful.
+    /// `Err(AllocError)`: If the allocation was unsuccessful.
+    pub(crate) unsafe fn allocate(
+        &mut self,
+        count: usize,
+        on_err: OnError,
+    ) -> Result<(), AllocError> {
         #[cfg(debug_assertions)]
         debug_assert_not_allocated(self);
 
-        let new_layout = self.make_layout(count);
+        let new_layout = self.make_layout(count, on_err)?;
 
         let ptr = alloc(new_layout) as *mut T;
 
         // Success branch.
-        if branch_prediction::likely(!ptr.is_null()) {
+        if likely(!ptr.is_null()) {
             self.ptr = ptr;
-            return;
+            return Ok(());
         }
 
-        alloc::handle_alloc_error(new_layout);
+        Err(on_err.alloc_err(new_layout))
+    }
+
+    /// Shrinks or grows the allocated memory space to the specified `count`, and copies
+    /// the initialized elements to the new memory space.
+    ///
+    /// This method handles allocation error according to the error handling context `on_err`.
+    ///
+    /// # Safety
+    ///
+    /// - Pointer must be allocated before calling this method.
+    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    ///
+    /// - `allocated_count` must be the same as the previously allocated `count` of type `T`.
+    ///   If the count is not the same, the result is `undefined behavior`.
+    ///
+    /// - Initialized elements will not be dropped when shrinking the memory space.
+    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not
+    ///   dropped properly before calling this method.
+    ///
+    /// - `new_count` must be greater than `0`.
+    ///   Allocating memory space with `0` count will be `undefined behavior`.
+    ///
+    /// - `new_count` in bytes, when rounded up to the nearest multiple of `align`, must be less
+    ///   than or equal to `isize::MAX` bytes.
+    ///
+    /// - `copy_count` must be within the bounds of the allocated memory space.
+    ///   Copying more elements than the allocated count will cause termination with `SIGSEGV`.
+    ///
+    /// These invariants are checked in debug mode only.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())`: If the allocation was successful.
+    /// `Err(AllocError)`: If the allocation was unsuccessful.
+    pub(crate) unsafe fn reallocate(
+        &mut self,
+        allocated_count: usize,
+        new_count: usize,
+        copy_count: usize,
+        on_err: OnError,
+    ) -> Result<(), AllocError> {
+        #[cfg(debug_assertions)]
+        debug_assert_allocated(self);
+
+        #[cfg(debug_assertions)]
+        debug_assert_copy_inbounds(allocated_count, copy_count);
+
+        // Debug-mode checked for valid size and alignment.
+        let new_layout = self.make_layout(new_count, on_err)?;
+
+        let new_ptr = alloc(new_layout) as *mut T;
+
+        // Success branch.
+        if likely(!new_ptr.is_null()) {
+            ptr::copy_nonoverlapping(self.ptr, new_ptr, copy_count);
+
+            let current_layout = self.make_layout_unchecked(allocated_count);
+
+            alloc::dealloc(self.ptr as *mut u8, current_layout);
+
+            self.ptr = new_ptr;
+
+            return Ok(());
+        };
+
+        Err(on_err.alloc_err(new_layout))
     }
 
     /// Deallocates the memory space pointed by the pointer.
@@ -255,72 +362,11 @@ impl<T> UnsafeBufferPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        let current_layout = self.make_layout(allocated_count);
+        let current_layout = self.make_layout_unchecked(allocated_count);
 
         alloc::dealloc(self.ptr as *mut u8, current_layout);
 
         self.ptr = ptr::null();
-    }
-
-    /// Shrinks or grows the allocated memory space to the specified `count`, and copies the
-    /// initialized elements to the new memory space.
-    ///
-    /// # Safety
-    ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
-    ///
-    /// - `allocated_count` must be the same as the previously allocated `count` of type `T`.
-    ///   If the count is not the same, the result is `undefined behavior`.
-    ///
-    /// - Initialized elements will not be dropped when shrinking the memory space.
-    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not
-    ///   dropped properly before calling this method.
-    ///
-    /// - `new_count` must be greater than `0`.
-    ///   Allocating memory space with `0` count will be `undefined behavior`.
-    ///
-    /// - `new_count` in bytes, when rounded up to the nearest multiple of `align`, must be less
-    ///   than or equal to `isize::MAX` bytes.
-    ///
-    /// - `copy_count` must be within the bounds of the allocated memory space.
-    ///   Copying more elements than the allocated count will cause termination with `SIGSEGV`.
-    ///
-    /// These invariants are checked in debug mode only.
-    ///
-    pub(crate) unsafe fn reallocate(
-        &mut self,
-        allocated_count: usize,
-        new_count: usize,
-        copy_count: usize,
-    ) {
-        #[cfg(debug_assertions)]
-        debug_assert_allocated(self);
-
-        #[cfg(debug_assertions)]
-        debug_assert_copy_inbounds(allocated_count, copy_count);
-
-        // Debug-mode checked for valid size and alignment.
-        let new_layout = self.make_layout(new_count);
-
-        let new_ptr = alloc(new_layout) as *mut T;
-
-        // Success branch.
-        if branch_prediction::likely(!new_ptr.is_null()) {
-            core::intrinsics::copy_nonoverlapping(self.ptr, new_ptr, copy_count);
-
-            let current_layout = self.make_layout(allocated_count);
-
-            alloc::dealloc(self.ptr as *mut u8, current_layout);
-
-            self.ptr = new_ptr;
-
-            return;
-        };
-
-        // Allocation failed.
-        // This call is just a fancy way to abort the program.
-        alloc::handle_alloc_error(new_layout);
     }
 
     /// Sets all elements in the allocated memory space to the default value of `T`.
@@ -494,7 +540,7 @@ impl<T> UnsafeBufferPointer<T> {
         let dst = (self.ptr as *mut T).add(at);
         let src = dst.add(1);
 
-        core::intrinsics::copy(src, dst, count);
+        ptr::copy(src, dst, count);
     }
 
     /// Calls `drop` on the initialized elements with the specified `count` starting from the
@@ -640,7 +686,7 @@ impl<T> UnsafeBufferPointer<T> {
         debug_assert_allocated(self);
 
         let instance = UnsafeBufferPointer::new_allocate(count);
-        core::intrinsics::copy_nonoverlapping(self.ptr, instance.ptr as *mut T, count);
+        ptr::copy_nonoverlapping(self.ptr, instance.ptr as *mut T, count);
         instance
     }
 
@@ -706,6 +752,8 @@ impl<T> Drop for UnsafeBufferPointer<T> {
 #[cfg(test)]
 mod ptr_tests {
     use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     #[test]
     fn test_buffer_ptr_new() {
@@ -746,11 +794,24 @@ mod ptr_tests {
         let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
 
         unsafe {
-            buffer_ptr.allocate(3);
+            let result = buffer_ptr.allocate(3, OnError::NoReturn);
 
+            assert!(result.is_ok());
             assert!(!buffer_ptr.is_null());
 
             buffer_ptr.deallocate(3);
+        }
+    }
+
+    #[test]
+    fn test_buffer_ptr_allocate_return_err() {
+        let mut buffer_ptr: UnsafeBufferPointer<u32> = UnsafeBufferPointer::new();
+
+        unsafe {
+            let result = buffer_ptr.allocate(usize::MAX, OnError::ReturnErr);
+
+            assert!(matches!(result, Err(AllocError::Overflow)));
+            assert!(buffer_ptr.is_null());
         }
     }
 
@@ -762,19 +823,19 @@ mod ptr_tests {
 
         // count must be greater than 0, should panic.
         unsafe {
-            buffer_ptr.allocate(0);
+            let _ = buffer_ptr.allocate(0, OnError::NoReturn);
         }
     }
 
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Allocation size exceeds maximum limit on this platform")]
-    fn test_buffer_ptr_allocate_overflow() {
+    fn test_buffer_ptr_allocate_over_size() {
         let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
 
         // Size exceeds maximum limit, should panic.
         unsafe {
-            buffer_ptr.allocate(isize::MAX as usize + 1);
+            let _ = buffer_ptr.allocate(isize::MAX as usize + 1, OnError::NoReturn);
         }
     }
 
@@ -785,12 +846,12 @@ mod ptr_tests {
         let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
         unsafe {
             // Not yet allocated, should not panic.
-            buffer_ptr.allocate(1);
+            let _ = buffer_ptr.allocate(1, OnError::NoReturn);
 
             assert!(!buffer_ptr.is_null());
 
             // Already allocated, should panic.
-            buffer_ptr.allocate(2);
+            let _ = buffer_ptr.allocate(2, OnError::NoReturn);
         }
     }
 
@@ -868,12 +929,25 @@ mod ptr_tests {
             *(buffer_ptr.ptr as *mut u8).add(2) = 3;
 
             // Grows the count to 5.
-            buffer_ptr.reallocate(3, 5, 3);
+            let result = buffer_ptr.reallocate(3, 5, 3, OnError::NoReturn);
+            assert!(result.is_ok());
 
-            // Check values after reallocation.
+            // Read values after reallocation.
             for i in 0..3 {
                 assert_eq!(*buffer_ptr.ptr.add(i), i as u8 + 1);
             }
+
+            buffer_ptr.deallocate(3);
+        }
+    }
+
+    #[test]
+    fn test_buffer_ptr_reallocate_return_err() {
+        unsafe {
+            let mut buffer_ptr: UnsafeBufferPointer<u32> = UnsafeBufferPointer::new_allocate(3);
+            let result = buffer_ptr.reallocate(3, usize::MAX, 3, OnError::ReturnErr);
+
+            assert!(matches!(result, Err(AllocError::Overflow)));
 
             buffer_ptr.deallocate(3);
         }
@@ -887,7 +961,37 @@ mod ptr_tests {
 
         // Not yet allocated, should panic.
         unsafe {
-            buffer_ptr.reallocate(5, 10, 5);
+            let _ = buffer_ptr.reallocate(5, 10, 5, OnError::NoReturn);
+        }
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "Allocation size must be greater than 0")]
+    fn test_buffer_ptr_reallocate_zero_size() {
+        unsafe {
+            let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new_allocate(3);
+            let _ = buffer_ptr.reallocate(3, 0, 3, OnError::NoReturn);
+        }
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "Allocation size exceeds maximum limit on this platform")]
+    fn test_buffer_ptr_reallocate_over_size() {
+        unsafe {
+            let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new_allocate(3);
+            let _ = buffer_ptr.reallocate(3, isize::MAX as usize + 1, 3, OnError::NoReturn);
+        }
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "Copy count must be less than or equal to allocated count")]
+    fn test_buffer_ptr_reallocate_copy_out_of_bounds() {
+        unsafe {
+            let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new_allocate(3);
+            let _ = buffer_ptr.reallocate(3, 6, 6, OnError::NoReturn);
         }
     }
 
@@ -1053,9 +1157,6 @@ mod ptr_tests {
             buffer_ptr.deallocate(3);
         }
     }
-
-    use std::cell::RefCell;
-    use std::rc::Rc;
 
     #[derive(Debug)]
     struct DropCounter {

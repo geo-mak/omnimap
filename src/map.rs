@@ -1,5 +1,6 @@
 use core::fmt::{Debug, Display};
 use core::hash::{Hash, Hasher};
+use core::hint::unreachable_unchecked;
 use core::iter::Map;
 use core::mem::ManuallyDrop;
 use core::ops::{Index, IndexMut};
@@ -9,7 +10,8 @@ use core::{fmt, mem};
 use std::collections::hash_map::DefaultHasher;
 
 use crate::alloc::UnsafeBufferPointer;
-use crate::opt::branch_prediction;
+use crate::error::{AllocError, OnError};
+use crate::opt::branch_prediction::{likely, unlikely};
 
 struct FindResult {
     slot_index: usize,
@@ -85,7 +87,6 @@ impl<K, V> OmniMap<K, V>
 where
     K: Eq + Hash,
 {
-    const MAX_LOAD_FACTOR: f64 = 0.875;
     const DEFAULT_CAPACITY: usize = 16;
 
     /// Returns a new `OmniMap` without allocated capacity.
@@ -132,12 +133,15 @@ where
             return Self::new();
         }
 
-        let alloc_cap = Self::allocation_capacity(capacity);
+        let cap = match Self::allocation_capacity(capacity, OnError::NoReturn) {
+            Ok(cap) => cap,
+            Err(_) => unsafe { unreachable_unchecked() },
+        };
 
         OmniMap {
-            entries: unsafe { UnsafeBufferPointer::new_allocate(alloc_cap) },
-            index: unsafe { UnsafeBufferPointer::new_allocate_default(alloc_cap) },
-            cap: alloc_cap,
+            entries: unsafe { UnsafeBufferPointer::new_allocate(cap) },
+            index: unsafe { UnsafeBufferPointer::new_allocate_default(cap) },
+            cap,
             len: 0,
             deleted: 0,
         }
@@ -161,9 +165,9 @@ where
     /// let map: OmniMap<i32, &str> = OmniMap::with_capacity(10);
     /// assert_eq!(map.capacity(), 10);
     /// ```
-    #[inline]
+    #[inline(always)]
     pub const fn capacity(&self) -> usize {
-        (self.cap as f64 * Self::MAX_LOAD_FACTOR) as usize
+        (self.cap * 7) / 8
     }
 
     /// Returns the number of entries in the `OmniMap`.
@@ -182,7 +186,7 @@ where
     ///
     /// assert_eq!(map.len(), 2);
     /// ```
-    #[inline]
+    #[inline(always)]
     pub const fn len(&self) -> usize {
         self.len
     }
@@ -204,7 +208,7 @@ where
     ///
     /// assert!(!map.is_empty());
     /// ```
-    #[inline]
+    #[inline(always)]
     pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
@@ -218,31 +222,58 @@ where
     }
 
     /// Returns the value that maintains the load factor for a given capacity `given`.
+    ///
+    /// This method doesn't check for arithmetic overflow.
     #[must_use]
     #[inline(always)]
-    const fn allocation_capacity(given: usize) -> usize {
-        ((given + 1) as f64 / Self::MAX_LOAD_FACTOR) as usize
+    const fn allocation_capacity_unchecked(given: usize) -> usize {
+        ((given + 1) * 8) / 7
+    }
+
+    /// Returns the value that maintains the load factor for a given capacity `given`.
+    ///
+    /// This method checks for arithmetic overflow.
+    #[inline(always)]
+    const fn allocation_capacity(given: usize, on_err: OnError) -> Result<usize, AllocError> {
+        if let Some(plus_one) = given.checked_add(1) {
+            if let Some(mul_eight) = plus_one.checked_mul(8) {
+                // Can't overflow.
+                return Ok(mul_eight / 7);
+            }
+        }
+        Err(on_err.overflow())
+    }
+
+    /// Returns the next power of two of the current capacity.
+    ///
+    /// This method panics when overflow occurs.
+    #[inline(always)]
+    const fn capacity_next_power_of_two(&self) -> usize {
+        match Self::allocation_capacity(self.cap, OnError::NoReturn) {
+            Ok(alloc_cap) => alloc_cap.next_power_of_two(),
+            Err(_) => unsafe { unreachable_unchecked() },
+        }
     }
 
     /// Allocates the specified `cap` and fill index with empty slots.
     /// Map's capacity is set to `cap` after calling this method.
     ///
+    /// `new_cap` must be greater than `0` and within the range of `isize::MAX` bytes to ensure
+    /// successful allocation.
+    ///
     /// # Safety
     ///
-    /// - This method should be called **only** when the map is not allocated.
-    ///
-    /// - `new_cap` must be greater than `0` and within the range of `isize::MAX` bytes.
-    ///
-    #[inline]
-    fn allocate(&mut self, cap: usize) {
+    /// This method should be called **only** when the map is not allocated.
+    fn allocate(&mut self, cap: usize, on_err: OnError) -> Result<(), AllocError> {
         unsafe {
-            self.entries.allocate(cap);
-            self.index.allocate(cap);
+            self.entries.allocate(cap, on_err)?;
+            self.index.allocate(cap, on_err)?;
             // Write empty slots to the new index.
             self.index.memset_default(cap);
         }
 
         self.cap = cap;
+        Ok(())
     }
 
     /// Deallocates the entries and the index without calling `drop` on the initialized entries.
@@ -252,8 +283,6 @@ where
     /// # Safety
     ///
     /// Index and entries must be allocated before calling this method.
-    ///
-    #[inline]
     fn deallocate(&mut self) {
         unsafe {
             self.entries.deallocate(self.cap);
@@ -380,17 +409,17 @@ where
     ///
     /// - Index and entries must be allocated before calling this method.
     ///
-    /// - `new_cap` must be greater than `0` and within the range of `isize::MAX` bytes.
-    ///
     /// - `new_cap` must be greater than or equal to the current length.
     ///
-    #[inline]
-    fn reallocate_reindex(&mut self, new_cap: usize) {
+    fn reallocate_reindex(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
         unsafe {
             // Reallocate the entries with the new capacity and copy initialized entries.
-            self.entries.reallocate(self.cap, new_cap, self.len);
+            self.entries
+                .reallocate(self.cap, new_cap, self.len, on_err)?;
+
             // Reallocate the index with the new capacity without copying.
-            self.index.reallocate(self.cap, new_cap, 0);
+            self.index.reallocate(self.cap, new_cap, 0, on_err)?;
+
             // Write empty slots to the new index.
             self.index.memset_default(new_cap);
         }
@@ -399,6 +428,50 @@ where
         self.deleted = 0;
 
         self.build_index();
+
+        Ok(())
+    }
+
+    /// Reclaims deleted slots if suitable or reserves more capacity according to the load factor.
+    ///
+    /// This method panics when overflow occurs or when allocation fails.
+    fn reclaim_or_reserve(&mut self) {
+        if self.len < self.cap / 2 {
+            // Reclaiming deleted slots without reallocation.
+            self.reindex();
+        } else {
+            // Reallocation.
+            let result = if likely(self.cap != 0) {
+                let new_cap = self.capacity_next_power_of_two();
+                self.reallocate_reindex(new_cap, OnError::NoReturn)
+            } else {
+                self.allocate(4, OnError::NoReturn)
+            };
+            // Hints the compiler that the error branch can be eliminated from the call chain.
+            match result {
+                Ok(_) => (),
+                Err(_) => unsafe { unreachable_unchecked() },
+            }
+        }
+    }
+
+    /// Tries to reserve `additional` capacity.
+    ///
+    /// All internal calls are checked, with result depends on the error handling context `on_err`.
+    fn reserve_additional(&mut self, additional: usize, on_err: OnError) -> Result<(), AllocError> {
+        if likely(additional != 0) {
+            let extra_cap = Self::allocation_capacity(additional, on_err)?;
+            if likely(self.cap != 0) {
+                match self.cap.checked_add(extra_cap) {
+                    Some(new_cap) => self.reallocate_reindex(new_cap, on_err),
+                    None => Err(on_err.overflow()),
+                }
+            } else {
+                self.allocate(extra_cap, on_err)
+            }
+        } else {
+            Ok(())
+        }
     }
 
     /// Reserves capacity for `additional` more elements.
@@ -429,44 +502,66 @@ where
     /// // Reserve space for 10 more elements
     /// map.reserve(10);
     ///
-    /// // The capacity is now 12
+    /// // The capacity is now 14
     /// assert_eq!(map.capacity(), 14);
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        if branch_prediction::unlikely(additional == 0) {
-            return;
-        }
-
-        // Allocate additional with reserves.
-        let alloc_cap = Self::allocation_capacity(additional);
-
-        if branch_prediction::unlikely(self.cap == 0) {
-            self.allocate(alloc_cap);
-        } else {
-            let new_cap = self.cap.checked_add(alloc_cap).unwrap_or(usize::MAX);
-            self.reallocate_reindex(new_cap);
-        }
+        match self.reserve_additional(additional, OnError::NoReturn) {
+            Ok(_) => (),
+            // Hints the compiler that the error branch can be eliminated from the call chain.
+            Err(_) => unsafe { unreachable_unchecked() },
+        };
     }
 
-    /// Reserves more capacity if the current load exceeds the max load allowed by the load factor.
+    /// Tries to reserve capacity for `additional` more elements.
     ///
-    /// It will try to reclaim deleted slots first, before reallocating.
-    fn reserve_if_needed(&mut self) {
-        debug_assert_ne!(self.cap, 0);
-        if branch_prediction::unlikely((self.len + 1 + self.deleted) > self.capacity()) {
-            if branch_prediction::unlikely(self.len < self.cap / 2) {
-                // Reclaiming deleted slots without reallocation.
-                self.reindex();
-            } else {
-                // Reallocation.
-                let new_cap = Self::allocation_capacity(self.cap)
-                    .checked_next_power_of_two()
-                    .unwrap_or(usize::MAX);
-
-                self.reallocate_reindex(new_cap)
-            }
-        }
+    /// This method is semantically equivalent to [`OmniMap::reserve`], except that it returns an
+    /// error instead of panicking when the allocation fails.
+    ///
+    /// The resulting capacity will be equal to `self.capacity() + additional` or _more_ to
+    /// maintain the load factor.
+    ///
+    /// This method is no-op if `additional` is `0`.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(n) on average.
+    ///
+    /// # Parameters
+    ///
+    /// - `additional`: The number of additional elements to reserve space for.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omni_map::{AllocError, OmniMap};
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// // The allocated capacity with first insert is 4.
+    /// map.insert(1, "a");
+    ///
+    /// // Try reserve space for very large number of elements.
+    /// let mut result = map.try_reserve(usize::MAX);
+    ///
+    /// // Result must be error.
+    /// assert!(matches!(result.err().unwrap(), AllocError::Overflow));
+    ///
+    /// // The capacity remains 3
+    /// assert_eq!(map.capacity(), 3);
+    ///
+    /// // Reserve space for 10 more elements
+    /// result = map.try_reserve(10);
+    ///
+    /// assert!(result.is_ok());
+    ///
+    /// // The capacity is now 14
+    /// assert_eq!(map.capacity(), 14);
+    /// ```
+    #[inline]
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), AllocError> {
+        self.reserve_additional(additional, OnError::ReturnErr)
     }
 
     /// Finds the slot of the key in the index.
@@ -545,10 +640,8 @@ where
     /// ```
     #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
-        if branch_prediction::unlikely(self.cap == 0) {
-            self.allocate(4);
-        } else {
-            self.reserve_if_needed();
+        if unlikely(self.len + self.deleted >= self.capacity()) {
+            self.reclaim_or_reserve();
         }
 
         let hash = self.make_hash(&key);
@@ -763,6 +856,7 @@ where
     /// // Key does not exist.
     /// assert!(!map.contains_key(&2));
     /// ```
+    #[must_use]
     #[inline]
     pub fn contains_key(&self, key: &K) -> bool {
         self.get(key).is_some()
@@ -823,7 +917,7 @@ where
                 let removed = self.entries.read_for_ownership(index).value;
                 self.index.store(result.slot_index, Slot::Deleted);
 
-                if branch_prediction::likely(index != self.len) {
+                if likely(index != self.len) {
                     // Call order matters.
                     self.decrement_index(index, self.len);
                     self.entries.shift_left(index, self.len - index);
@@ -972,11 +1066,14 @@ where
     /// ```
     #[inline]
     pub fn shrink_to(&mut self, capacity: usize) {
-        if branch_prediction::likely(capacity >= self.len && capacity < self.capacity()) {
-            if branch_prediction::likely(self.len > 0) {
+        if likely(capacity >= self.len && capacity < self.capacity()) {
+            if likely(self.len > 0) {
                 // Shrink and keep reserves.
-                let alloc_cap = Self::allocation_capacity(capacity);
-                self.reallocate_reindex(alloc_cap);
+                let new_cap = Self::allocation_capacity_unchecked(capacity);
+                match self.reallocate_reindex(new_cap, OnError::NoReturn) {
+                    Ok(_) => (),
+                    Err(_) => unsafe { unreachable_unchecked() },
+                }
             } else {
                 self.deallocate();
             }
@@ -1010,11 +1107,14 @@ where
     /// ```
     #[inline]
     pub fn shrink_to_fit(&mut self) {
-        if branch_prediction::likely(self.capacity() > self.len) {
-            if branch_prediction::likely(self.len > 0) {
+        if likely(self.capacity() > self.len) {
+            if likely(self.len > 0) {
                 // Shrink and keep reserves.
-                let alloc_cap = Self::allocation_capacity(self.len);
-                self.reallocate_reindex(alloc_cap);
+                let new_cap = Self::allocation_capacity_unchecked(self.len);
+                match self.reallocate_reindex(new_cap, OnError::NoReturn) {
+                    Ok(_) => (),
+                    Err(_) => unsafe { unreachable_unchecked() },
+                }
             } else {
                 self.deallocate();
             }
@@ -1377,16 +1477,16 @@ where
         }
 
         // self.len + reserves
-        let alloc_cap = Self::allocation_capacity(self.len);
+        let cap = Self::allocation_capacity_unchecked(self.len);
 
         // (Len > 0) -> (capacity > 0) -> entries and index are allocated.
         let mut clone = unsafe {
             OmniMap {
                 // Clone the entries with capacity equal to the number of elements.
-                entries: self.entries.make_clone(alloc_cap, self.len),
+                entries: self.entries.make_clone(cap, self.len),
                 // NOTE: Index can't be compacted because it's length is equal to the capacity.
-                index: UnsafeBufferPointer::new_allocate_default(alloc_cap),
-                cap: alloc_cap,
+                index: UnsafeBufferPointer::new_allocate_default(cap),
+                cap,
                 len: self.len,
                 deleted: 0,
             }
