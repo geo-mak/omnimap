@@ -252,7 +252,7 @@ fn main(){
     assert_eq!(map.len(), 4);
 
     // Remove the second item.
-    let removed_value = map.remove(&2);
+    let removed_value = map.shift_remove(&2);
 
     // Removed value is "b".
     assert_eq!(removed_value, Some("b"));

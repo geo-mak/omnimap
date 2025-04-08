@@ -532,7 +532,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// # Time Complexity
     ///
     /// _O_(n) where `n` is the number (`count`) of the elements to be shifted.
-    #[allow(dead_code)]
+    #[inline(always)]
     pub const unsafe fn shift_left(&mut self, at: usize, count: usize) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
@@ -541,6 +541,36 @@ impl<T> UnsafeBufferPointer<T> {
         let src = dst.add(1);
 
         ptr::copy(src, dst, count);
+    }
+
+    /// Copies the value at the offset `from` to the offset `to`, overwriting the value at `to`
+    /// and leaving the value at `from` unaffected.
+    ///
+    /// This operation is internally untyped, the initialization state is operationally irrelevant.
+    ///
+    /// # Safety
+    ///
+    /// - Pointer must be allocated before calling this method.
+    ///   Calling this method with a null ptr will cause termination with `SIGABRT`.
+    ///
+    /// - `from` and `to` must be within the bounds of the allocated memory space.
+    ///
+    /// - If the offset `to` has already been initialized, the value will be overwritten **without**
+    ///   calling `drop`. This might cause memory leaks if the element is not of trivial type,
+    ///   or not dropped properly before overwriting.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(1).
+    #[inline(always)]
+    pub const unsafe fn memmove_one(&mut self, from: usize, to: usize) {
+        #[cfg(debug_assertions)]
+        debug_assert_allocated(self);
+
+        let src = (self.ptr as *mut T).add(from);
+        let dst = (self.ptr as *mut T).add(to);
+
+        ptr::copy(src, dst, 1);
     }
 
     /// Calls `drop` on the initialized elements with the specified `count` starting from the
@@ -1078,6 +1108,25 @@ mod ptr_tests {
             assert_eq!(*buffer_ptr.load(4), 5);
 
             buffer_ptr.deallocate(5);
+        }
+    }
+
+    #[test]
+    fn test_buffer_ptr_move_one() {
+        unsafe {
+            let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new_allocate(3);
+
+            buffer_ptr.store(0, 10);
+            buffer_ptr.store(1, 20);
+            buffer_ptr.store(2, 30);
+
+            buffer_ptr.memmove_one(0, 2);
+
+            assert_eq!(*buffer_ptr.load(0), 10);
+            assert_eq!(*buffer_ptr.load(1), 20);
+            assert_eq!(*buffer_ptr.load(2), 10); // Value at index 2 is overwritten.
+
+            buffer_ptr.deallocate(3);
         }
     }
 

@@ -77,14 +77,26 @@ fn bench_last(c: &mut Criterion) {
     });
 }
 
-fn bench_remove(c: &mut Criterion) {
-    c.bench_function("OmniMap, N=1e4, remove at N/2", |b| {
+fn bench_shift_remove(c: &mut Criterion) {
+    c.bench_function("OmniMap, N=1e4, shift_remove at N/2", |b| {
         let mut map = OmniMap::new();
         for i in 0..10_000 {
             map.insert(i, i);
         }
         b.iter(|| {
-            black_box(map.remove(&5000));
+            black_box(map.shift_remove(&5000));
+        })
+    });
+}
+
+fn bench_swap_remove(c: &mut Criterion) {
+    c.bench_function("OmniMap, N=1e4, swap_remove at N/2", |b| {
+        let mut map = OmniMap::new();
+        for i in 0..10_000 {
+            map.insert(i, i);
+        }
+        b.iter(|| {
+            black_box(map.swap_remove(&5000));
         })
     });
 }
@@ -253,7 +265,8 @@ criterion_group!(
 
 criterion_group!(
     benches_remove_ops,
-    bench_remove,
+    bench_shift_remove,
+    bench_swap_remove,
     bench_remove_hashmap,
     bench_pop_first,
     bench_pop_last,

@@ -237,6 +237,158 @@ mod map_tests {
     }
 
     #[test]
+    fn test_map_shift_remove() {
+        let mut map = OmniMap::new();
+
+        assert_eq!(map.shift_remove(&1), None);
+
+        map.insert(1, 2);
+
+        // Remove the only item.
+        assert_eq!(map.shift_remove(&1), Some(2));
+
+        assert_eq!(map.len(), 0);
+        assert_eq!(map.debug_deleted(), 1);
+        assert_eq!(map.capacity(), 3);
+
+        // Must return None, because the map is empty.
+        assert_eq!(map.shift_remove(&1), None);
+
+        // Insert new items.
+        for i in 1..5 {
+            map.insert(i, i + 1);
+        }
+
+        // Now, the map must have expanded its capacity and reset the deleted counter.
+        assert_eq!(map.len(), 4);
+        assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.capacity(), 7);
+
+        // Remove the second item (key "2").
+        assert_eq!(map.shift_remove(&2), Some(3));
+
+        // Map state at this point.
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.debug_deleted(), 1);
+        assert_eq!(map.capacity(), 7);
+
+        let mut deleted = 0;
+        let mut occupied = 0;
+        let mut empty = 0;
+
+        unsafe {
+            for i in 0..map.debug_allocated_cap() {
+                match map.debug_index_ptr().load(i) {
+                    Slot::Deleted => {
+                        deleted += 1;
+                    }
+                    Slot::Occupied(_) => {
+                        occupied += 1;
+                    }
+                    Slot::Empty => {
+                        empty += 1;
+                    }
+                }
+            }
+        }
+
+        // Expected index state at this point.
+        assert_eq!(deleted, 1);
+        assert_eq!(occupied, 3);
+        assert_eq!(empty, 4);
+
+        // Check the order of the remaining items.
+        assert_eq!(
+            map.iter().collect::<Vec<(&u8, &u8)>>(),
+            vec![(&1, &2), (&3, &4), (&4, &5)]
+        );
+
+        // Order of the keys must be preserved, but index has been updated.
+        assert_eq!(map[0], 2);
+        assert_eq!(map[1], 4);
+        assert_eq!(map[2], 5);
+    }
+
+    #[test]
+    fn test_map_swap_remove() {
+        let mut map = OmniMap::new();
+
+        assert_eq!(map.swap_remove(&1), None);
+
+        map.insert(1, "a");
+        map.insert(2, "b");
+        map.insert(3, "c");
+        map.insert(4, "d");
+
+        assert_eq!(map.len(), 4);
+        assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.capacity(), 7);
+
+        assert_eq!(map[0], "a");
+        assert_eq!(map[1], "b");
+        assert_eq!(map[2], "c");
+        assert_eq!(map[3], "d");
+
+        assert_eq!(map.get(&1), Some(&"a"));
+        assert_eq!(map.get(&2), Some(&"b"));
+        assert_eq!(map.get(&3), Some(&"c"));
+        assert_eq!(map.get(&4), Some(&"d"));
+
+        assert_eq!(map.swap_remove(&1), Some("a"));
+
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.debug_deleted(), 1);
+        assert_eq!(map.capacity(), 7);
+
+        assert_eq!(map[0], "d"); // <- last entry in its place
+        assert_eq!(map[1], "b");
+        assert_eq!(map[2], "c");
+
+        assert_eq!(map.get(&1), None);
+        assert_eq!(map.get(&2), Some(&"b"));
+        assert_eq!(map.get(&3), Some(&"c"));
+        assert_eq!(map.get(&4), Some(&"d"));
+
+        assert_eq!(map.swap_remove(&4), Some("d"));
+
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.debug_deleted(), 2);
+        assert_eq!(map.capacity(), 7);
+
+        assert_eq!(map[0], "c"); // <- last entry in its place
+        assert_eq!(map[1], "b");
+
+        assert_eq!(map.get(&1), None);
+        assert_eq!(map.get(&2), Some(&"b"));
+        assert_eq!(map.get(&3), Some(&"c"));
+        assert_eq!(map.get(&4), None);
+
+        assert_eq!(map.swap_remove(&3), Some("c"));
+
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.debug_deleted(), 3);
+        assert_eq!(map.capacity(), 7);
+
+        assert_eq!(map[0], "b");
+
+        assert_eq!(map.get(&1), None);
+        assert_eq!(map.get(&2), Some(&"b"));
+        assert_eq!(map.get(&3), None);
+        assert_eq!(map.get(&4), None);
+
+        assert_eq!(map.swap_remove(&2), Some("b"));
+
+        assert_eq!(map.len(), 0);
+        assert_eq!(map.debug_deleted(), 4);
+        assert_eq!(map.capacity(), 7);
+
+        assert_eq!(map.get(&1), None);
+        assert_eq!(map.get(&2), None);
+        assert_eq!(map.get(&3), None);
+        assert_eq!(map.get(&4), None);
+    }
+
+    #[test]
     fn test_map_pop_front() {
         let mut map = OmniMap::new();
 
@@ -391,97 +543,6 @@ mod map_tests {
     }
 
     #[test]
-    fn test_map_remove_existing_key() {
-        let mut map = OmniMap::new();
-
-        map.insert(1, 2);
-
-        // Remove the only item.
-        assert_eq!(map.remove(&1), Some(2));
-
-        assert_eq!(map.len(), 0);
-        assert_eq!(map.debug_deleted(), 1);
-        assert_eq!(map.capacity(), 3);
-
-        // Must return None, because the map is empty.
-        assert_eq!(map.remove(&1), None);
-
-        // Insert new items.
-        for i in 1..5 {
-            map.insert(i, i + 1);
-        }
-
-        // Now, the map must have expanded its capacity and reset the deleted counter.
-        assert_eq!(map.len(), 4);
-        assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 7);
-
-        // Remove the second item (key "2").
-        assert_eq!(map.remove(&2), Some(3));
-
-        // Map state at this point.
-        assert_eq!(map.len(), 3);
-        assert_eq!(map.debug_deleted(), 1);
-        assert_eq!(map.capacity(), 7);
-
-        let mut deleted = 0;
-        let mut occupied = 0;
-        let mut empty = 0;
-
-        unsafe {
-            for i in 0..map.debug_allocated_cap() {
-                match map.debug_index_ptr().load(i) {
-                    Slot::Deleted => {
-                        deleted += 1;
-                    }
-                    Slot::Occupied(_) => {
-                        occupied += 1;
-                    }
-                    Slot::Empty => {
-                        empty += 1;
-                    }
-                }
-            }
-        }
-
-        // Expected index state at this point.
-        assert_eq!(deleted, 1);
-        assert_eq!(occupied, 3);
-        assert_eq!(empty, 4);
-
-        // Check the order of the remaining items.
-        assert_eq!(
-            map.iter().collect::<Vec<(&u8, &u8)>>(),
-            vec![(&1, &2), (&3, &4), (&4, &5)]
-        );
-
-        // Order of the keys must be preserved, but index has been updated.
-        assert_eq!(map[0], 2);
-        assert_eq!(map[1], 4);
-        assert_eq!(map[2], 5);
-    }
-
-    #[test]
-    fn test_map_remove_nonexistent_key() {
-        let mut map = OmniMap::new();
-
-        map.insert(1, 1);
-
-        assert_eq!(map.len(), 1);
-        assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 3);
-
-        // Must return None, because the key does not exist.
-        assert_eq!(map.remove(&2), None);
-
-        assert_eq!(map.len(), 1);
-        assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 3);
-
-        assert_eq!(map.get(&1), Some(&1));
-    }
-
-    #[test]
     fn test_map_clear() {
         let mut map = OmniMap::with_capacity(4);
 
@@ -494,7 +555,7 @@ mod map_tests {
         assert_eq!(map.capacity(), 4);
 
         // Remove an item.
-        map.remove(&1);
+        map.shift_remove(&1);
 
         assert_eq!(map.len(), 2);
         assert_eq!(map.debug_deleted(), 1);
@@ -1046,7 +1107,7 @@ mod map_tests {
 
         // Remove some entries.
         for i in 75..100 {
-            assert_eq!(map.remove(&i), Some(i));
+            assert_eq!(map.shift_remove(&i), Some(i));
         }
 
         // Collect slots' information.
@@ -1114,7 +1175,7 @@ mod map_tests {
 
         // Remove all entries.
         for i in 0..75 {
-            map.remove(&i);
+            map.shift_remove(&i);
         }
 
         // No occupied or empty slots should be present.
@@ -1188,7 +1249,7 @@ mod map_tests {
         // Access the keys returns the last updated value.
         assert_eq!(map.get(&()), Some(&4));
 
-        map.remove(&());
+        map.shift_remove(&());
 
         // Len goes back to 0.
         assert_eq!(map.len(), 0);

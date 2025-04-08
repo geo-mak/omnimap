@@ -862,7 +862,62 @@ where
         self.get(key).is_some()
     }
 
+    /// Removes an entry by its `key` and returns its value.
+    ///
+    /// If `SHIFT` is `true`, this method will shift all entries after it to fill the gab, and
+    /// updates their slots.
+    ///
+    /// If `SHIFT` is `false`, this method will copy the last entry to the place of the removed
+    /// entry without shifting, and updates its slot.
+    ///
+    /// # Safety
+    ///
+    /// Map must not be empty when calling this method.
+    #[inline]
+    fn remove_entry<const SHIFT: bool>(&mut self, key: &K) -> Option<V> {
+        let hash = self.make_hash(key);
+
+        let result = self.find(hash, key);
+
+        // Key is found, remove the entry.
+        if let Some(index) = result.entry_index {
+            self.len -= 1;
+            self.deleted += 1;
+
+            unsafe {
+                let removed = self.entries.read_for_ownership(index).value;
+                self.index.store(result.slot_index, Slot::Deleted);
+
+                if likely(index != self.len) {
+                    if SHIFT {
+                        // Call order matters.
+                        self.decrement_index(index, self.len);
+                        self.entries.shift_left(index, self.len - index);
+                    } else {
+                        let last = self.entries.load(self.len);
+                        let swapped = self.find(last.hash, &last.key);
+                        self.entries.memmove_one(self.len, index);
+                        self.index.store(swapped.slot_index, Slot::Occupied(index));
+                    }
+                }
+
+                return Some(removed);
+            };
+        }
+
+        // Key was not found.
+        None
+    }
+
     /// Removes an entry by its `key`.
+    ///
+    /// If the removed entry is not the last one, this method shifts all elements after it to fill
+    /// the gab, which can be a significant performance overhead, especially with large number of
+    /// entries.
+    ///
+    /// If a strict order preservation is not required, consider using [`OmniMap::swap_remove`]
+    /// instead, which swaps the place of the last entry with the place of the removed entry to
+    /// fill the gab, without shifting.
     ///
     /// # Returns
     ///
@@ -892,43 +947,64 @@ where
     /// assert_eq!(map.len(), 2);
     ///
     /// // Remove an existing key
-    /// assert_eq!(map.remove(&1), Some("a"));
+    /// assert_eq!(map.shift_remove(&1), Some("a"));
     ///
     /// assert_eq!(map.len(), 1);
     ///
     /// // Remove a non-existing key
-    /// assert_eq!(map.remove(&1), None);
+    /// assert_eq!(map.shift_remove(&1), None);
     /// ```
-    pub fn remove(&mut self, key: &K) -> Option<V> {
+    pub fn shift_remove(&mut self, key: &K) -> Option<V> {
         if self.is_empty() {
             return None;
         }
+        self.remove_entry::<true>(key)
+    }
 
-        let hash = self.make_hash(key);
-
-        let result = self.find(hash, key);
-
-        // Key is found, remove the entry.
-        if let Some(index) = result.entry_index {
-            self.len -= 1;
-            self.deleted += 1;
-
-            unsafe {
-                let removed = self.entries.read_for_ownership(index).value;
-                self.index.store(result.slot_index, Slot::Deleted);
-
-                if likely(index != self.len) {
-                    // Call order matters.
-                    self.decrement_index(index, self.len);
-                    self.entries.shift_left(index, self.len - index);
-                }
-
-                return Some(removed);
-            };
+    /// Removes an entry by its `key`, and swaps its place with the last entry.
+    ///
+    /// This method can be significantly faster than [`OmniMap::shift_remove`], if a strict order
+    /// preservation is not required.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(value)`: If key's entry is found and removed.
+    ///
+    /// - `None`: If the key does not have entry.
+    ///
+    /// # Time Complexity
+    ///
+    /// - _O_(1) on average.
+    ///
+    /// # Note
+    /// This method does not shrink the current capacity of the map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omni_map::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    /// map.insert(3, "c");
+    ///
+    /// assert_eq!(map.len(), 3);
+    ///
+    /// // Remove an existing key by swapping.
+    /// assert_eq!(map.swap_remove(&1), Some("a"));
+    ///
+    /// assert_eq!(map.len(), 2);
+    ///
+    /// // The last entry has been swapped, and it is accessible at the index of the removed entry.
+    /// assert_eq!(map[0], "c");
+    /// ```
+    pub fn swap_remove(&mut self, key: &K) -> Option<V> {
+        if self.is_empty() {
+            return None;
         }
-
-        // Key was not found.
-        None
+        self.remove_entry::<false>(key)
     }
 
     /// Pops the first entry from the map.
