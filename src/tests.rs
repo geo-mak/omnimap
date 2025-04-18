@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod map_tests {
     use crate::error::AllocError;
-    use crate::map::{OmniMap, OmniMapIntoIter, Slot};
+    use crate::index::Tag;
+    use crate::map::{OmniMap, OmniMapIntoIter};
     use core::cell::RefCell;
     use std::rc::Rc;
 
@@ -22,6 +23,7 @@ mod map_tests {
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 0);
         assert_eq!(map.capacity(), 10);
+        assert_eq!(map.debug_allocated_cap(), 12);
     }
 
     #[test]
@@ -276,18 +278,16 @@ mod map_tests {
         let mut occupied = 0;
         let mut empty = 0;
 
-        unsafe {
-            for i in 0..map.debug_allocated_cap() {
-                match map.debug_index_ptr().load(i) {
-                    Slot::Deleted => {
-                        deleted += 1;
-                    }
-                    Slot::Occupied(_) => {
-                        occupied += 1;
-                    }
-                    Slot::Empty => {
-                        empty += 1;
-                    }
+        for i in 0..map.debug_allocated_cap() {
+            match map.debug_tag(i) {
+                Tag::Deleted => {
+                    deleted += 1;
+                }
+                Tag::Occupied => {
+                    occupied += 1;
+                }
+                Tag::Empty => {
+                    empty += 1;
                 }
             }
         }
@@ -406,9 +406,7 @@ mod map_tests {
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 1);
 
-        unsafe {
-            assert_eq!(*map.debug_index_ptr().load(0), Slot::Deleted);
-        }
+        assert!(map.debug_tag(0).is_deleted());
 
         assert_eq!(map.capacity(), 3);
 
@@ -438,18 +436,16 @@ mod map_tests {
         let mut occupied = 0;
         let mut empty = 0;
 
-        unsafe {
-            for i in 0..map.debug_allocated_cap() {
-                match map.debug_index_ptr().load(i) {
-                    Slot::Deleted => {
-                        deleted += 1;
-                    }
-                    Slot::Occupied(_) => {
-                        occupied += 1;
-                    }
-                    Slot::Empty => {
-                        empty += 1;
-                    }
+        for i in 0..map.debug_allocated_cap() {
+            match map.debug_tag(i) {
+                Tag::Deleted => {
+                    deleted += 1;
+                }
+                Tag::Occupied => {
+                    occupied += 1;
+                }
+                Tag::Empty => {
+                    empty += 1;
                 }
             }
         }
@@ -483,9 +479,7 @@ mod map_tests {
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 1);
 
-        unsafe {
-            assert_eq!(*map.debug_index_ptr().load(0), Slot::Deleted);
-        }
+        assert!(map.debug_tag(0).is_deleted());
 
         assert_eq!(map.capacity(), 3);
 
@@ -515,18 +509,16 @@ mod map_tests {
         let mut occupied = 0;
         let mut empty = 0;
 
-        unsafe {
-            for i in 0..map.debug_allocated_cap() {
-                match map.debug_index_ptr().load(i) {
-                    Slot::Deleted => {
-                        deleted += 1;
-                    }
-                    Slot::Occupied(_) => {
-                        occupied += 1;
-                    }
-                    Slot::Empty => {
-                        empty += 1;
-                    }
+        for i in 0..map.debug_allocated_cap() {
+            match map.debug_tag(i) {
+                Tag::Deleted => {
+                    deleted += 1;
+                }
+                Tag::Occupied => {
+                    occupied += 1;
+                }
+                Tag::Empty => {
+                    empty += 1;
                 }
             }
         }
@@ -568,11 +560,9 @@ mod map_tests {
         assert_eq!(map.debug_deleted(), 0);
         assert_eq!(map.capacity(), 4);
 
-        unsafe {
-            // All slots must be empty in the index.
-            for i in 0..map.debug_allocated_cap() {
-                assert_eq!(*map.debug_index_ptr().load(i), Slot::Empty);
-            }
+        // All slots must be empty in the index.
+        for i in 0..map.debug_allocated_cap() {
+            assert!(map.debug_tag(i).is_empty())
         }
 
         // Reinserting items must work.
@@ -1083,12 +1073,8 @@ mod map_tests {
         let mut map = OmniMap::with_capacity(100);
 
         // Initial state, all slots must be empty.
-        unsafe {
-            assert!(map
-                .debug_index_ptr()
-                .as_slice(map.debug_allocated_cap())
-                .iter()
-                .all(|slot| matches!(slot, Slot::Empty)));
+        for i in 0..map.debug_allocated_cap() {
+            assert!(map.debug_tag(i).is_empty())
         }
 
         assert_eq!(map.len(), 0);
@@ -1115,22 +1101,23 @@ mod map_tests {
         let mut empty_indices = 0;
         let mut deleted_indices = 0;
 
-        unsafe {
-            for slot in map.debug_index_ptr().as_slice(map.debug_allocated_cap()) {
-                match slot {
-                    Slot::Occupied(index) => {
-                        assert!(
-                            occupied_indices.insert(index),
-                            "Duplicate index found: {}",
-                            index
-                        );
-                    }
-                    Slot::Empty => {
-                        empty_indices += 1;
-                    }
-                    Slot::Deleted => {
-                        deleted_indices += 1;
-                    }
+        let alloc_cap = map.debug_allocated_cap();
+
+        for i in 0..alloc_cap {
+            match map.debug_tag(i) {
+                Tag::Occupied => {
+                    let index = map.debug_slot_value(i);
+                    assert!(
+                        occupied_indices.insert(index),
+                        "Duplicate index found: {}",
+                        index
+                    );
+                }
+                Tag::Empty => {
+                    empty_indices += 1;
+                }
+                Tag::Deleted => {
+                    deleted_indices += 1;
                 }
             }
         }
@@ -1147,12 +1134,8 @@ mod map_tests {
         map.shrink_to_fit();
 
         // No deleted slots should be present.
-        unsafe {
-            assert!(map
-                .debug_index_ptr()
-                .as_slice(map.debug_allocated_cap())
-                .iter()
-                .all(|slot| matches!(slot, Slot::Occupied(_) | Slot::Empty)));
+        for i in 0..map.debug_allocated_cap() {
+            assert!(!map.debug_tag(i).is_deleted())
         }
 
         assert_eq!(map.len(), 75);
@@ -1179,12 +1162,8 @@ mod map_tests {
         }
 
         // No occupied or empty slots should be present.
-        unsafe {
-            assert!(map
-                .debug_index_ptr()
-                .as_slice(map.debug_allocated_cap())
-                .iter()
-                .all(|slot| matches!(slot, Slot::Deleted | Slot::Empty)));
+        for i in 0..map.debug_allocated_cap() {
+            assert!(!map.debug_tag(i).is_occupied())
         }
 
         assert_eq!(map.len(), 0);
@@ -1203,12 +1182,8 @@ mod map_tests {
         assert_eq!(map.debug_allocated_cap(), 86);
 
         // The map must be able to reindex successfully, no deleted slots should be present.
-        unsafe {
-            assert!(map
-                .debug_index_ptr()
-                .as_slice(map.debug_allocated_cap())
-                .iter()
-                .all(|slot| !matches!(slot, Slot::Deleted)));
+        for i in 0..map.debug_allocated_cap() {
+            assert!(!map.debug_tag(i).is_deleted())
         }
 
         for i in 75..100 {

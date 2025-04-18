@@ -9,7 +9,6 @@ pub enum AllocError {
 
 impl AllocError {
     /// Panics with capacity overflow message.
-    #[inline(always)]
     pub(crate) const fn panic_overflow() -> ! {
         panic!("Allocation Error: capacity overflow")
     }
@@ -24,7 +23,7 @@ pub(crate) enum OnError {
 impl OnError {
     /// Handles `Overflow` error according to the current variant.
     #[must_use]
-    #[inline(always)]
+    #[inline]
     pub(crate) const fn overflow(&self) -> AllocError {
         match self {
             OnError::NoReturn => AllocError::panic_overflow(),
@@ -34,7 +33,7 @@ impl OnError {
 
     /// Handles `AllocatorErr` according to the current variant.
     #[must_use]
-    #[inline(always)]
+    #[inline]
     pub(crate) fn alloc_err(&self, layout: Layout) -> AllocError {
         match self {
             OnError::NoReturn => handle_alloc_error(layout),

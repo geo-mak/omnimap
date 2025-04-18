@@ -141,7 +141,7 @@ fn bench_clear(c: &mut Criterion) {
     c.bench_function("OmniMap, N=1e4, clear", |b| {
         let mut map = OmniMap::new();
         for i in 0..10_000 {
-            map.insert(i, i);
+            map.insert(i, i.to_string());
         }
         b.iter(|| {
             black_box(map.clear());
@@ -153,7 +153,7 @@ fn bench_clear_hashmap(c: &mut Criterion) {
     c.bench_function("HashMap, N=1e4, clear", |b| {
         let mut map = HashMap::new();
         for i in 0..10_000 {
-            map.insert(i, i);
+            map.insert(i, i.to_string());
         }
         b.iter(|| {
             black_box(map.clear());
