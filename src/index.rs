@@ -247,11 +247,11 @@ impl MapIndex {
 
     /// Returns scope guard, that ensure deallocating index in case of a sudden divergence from
     /// normal execution before deactivating the guard.
-    ///
-    /// A Guard instance is safe to be created even if the index is still unallocated.
-    ///
+    /// 
     /// # Safety
-    ///
+    /// 
+    /// - Index must be allocated before activating its guard.
+    /// 
     /// - `cap` must be the same capacity used to allocate index.
     ///
     /// - The returned guard must not outlive the guarded index instance.
@@ -259,6 +259,7 @@ impl MapIndex {
     /// - At the end of guarding scope, `deactivate()` must be called to deactivate the guard.
     #[inline(always)]
     pub(crate) const unsafe fn guard(&self, cap: usize) -> IndexGuard {
+        debug_assert!(!self.pointer.is_null());
         IndexGuard {
             index: self as *const _ as *mut MapIndex,
             cap,
@@ -282,9 +283,7 @@ impl IndexGuard {
 impl Drop for IndexGuard {
     fn drop(&mut self) {
         unsafe {
-            if !(*self.index).pointer.is_null() {
-                (*self.index).deallocate(self.cap);
-            }
+            (*self.index).deallocate(self.cap);
         }
     }
 }
