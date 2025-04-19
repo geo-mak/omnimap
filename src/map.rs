@@ -286,7 +286,7 @@ where
         // - This method is designed to be recoverable, the map's state must remain unchanged
         //   until a total success. All or none.
         //
-        // - Allocation remains a runtime decision it can fail regardless of the checking.
+        // - Allocation remains a runtime decision, it can fail regardless of the checking.
         unsafe {
             // The largest layout. Fallible, controlled.
             let layout = self.entries.make_layout(cap, on_err)?;
@@ -294,11 +294,11 @@ where
             // Index is much cheaper to deallocate on error.
             let mut index = MapIndex::new_unallocated();
 
-            // Guarded allocation with deallocation on sudden drop.
-            let index_guard = index.guard(cap);
-
             // Fallible, controlled.
             index.allocate_uninit(cap, on_err)?;
+
+            // Activate index's guard to deallocate new index on sudden drop.
+            let index_guard = index.guard(cap);
 
             // If the allocation fails, the allocated index will be deallocated by the guard.
             self.entries.allocate(layout, on_err)?;
@@ -473,7 +473,7 @@ where
         // - This method is designed to be recoverable, the map's state must remain unchanged
         //   until a total success. All or none.
         //
-        // - Allocation remains a runtime decision it can fail regardless of the checking.
+        // - Allocation remains a runtime decision, it can fail regardless of the checking.
         unsafe {
             // The largest layout. Fallible, controlled.
             let new_layout = self.entries.make_layout(new_cap, on_err)?;
@@ -484,11 +484,11 @@ where
             // Index is much cheaper to deallocate on error.
             let mut new_index = MapIndex::new_unallocated();
 
-            // Guarded allocation with deallocation on sudden drop.
-            let index_guard = new_index.guard(new_cap);
-
             // Fallible, controlled.
             new_index.allocate_uninit(new_cap, on_err)?;
+
+            // Activate index's guard to deallocate new index on sudden drop.
+            let index_guard = new_index.guard(new_cap);
 
             // If the new allocation fails, no deallocation will be done, and the allocated index
             // will be deallocated by the guard, however deallocation is considered infallible.
@@ -1588,12 +1588,10 @@ where
     fn make_clone<const COMPACT: bool>(&self) -> OmniMap<K, V> {
         // When COMPACT is true, execution takes this path:
         // 1 - Computes allocation capacity according to the current length.
-        // 2 - Instructs initializing control tags after successful allocation.
+        // 2 - Allocates new instance with initialized control tags.
         // 3 - Clones entries without copying index's data.
-        // 4 - Set clones delete counter to 0.
-        // 5 - Instructs building the index again.
-        let mut instance = Self::new();
-
+        // 4 - Sets the delete counter of the cloned instance to 0.
+        // 5 - Builds the index.
         let cap = if COMPACT {
             // len + required reserves.
             Self::allocation_capacity_unchecked(self.len)
@@ -1601,16 +1599,18 @@ where
             self.cap
         };
 
+        let mut instance = Self::new();
+
         match instance.allocate::<COMPACT>(cap, OnError::NoReturn) {
             Ok(_) => {
                 debug_assert!(instance.cap == cap);
-                // Map's destructor is qualified to deallocate.
+                // Clone's destructor is qualified to deallocate.
                 unsafe {
                     instance
                         .entries
                         .clone_from(self.entries.pointer(), self.len);
                     instance.len = self.len;
-                    // Map's destructor is qualified to deallocate and drop.
+                    // Clone's destructor is qualified to deallocate and drop.
                     if COMPACT {
                         instance.deleted = 0;
                         instance.build_index();

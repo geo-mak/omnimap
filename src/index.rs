@@ -48,7 +48,7 @@ pub(crate) struct MapIndex {
     // | Tag: A single byte as flag to store slot's state.                               |
     // | Index: A usize-value that stores an offset where an entry can be located.       |
     // -----------------------------------------------------------------------------------
-    pub(crate) pointer: UnsafeBufferPointer<u8>,
+    pointer: UnsafeBufferPointer<u8>,
 }
 
 impl MapIndex {
@@ -97,9 +97,9 @@ impl MapIndex {
         on_err: OnError,
     ) -> Result<(), AllocError> {
         unsafe {
-            let mut pointer = UnsafeBufferPointer::new();
             match Self::index_layout(cap) {
                 Some((layout, slots_size)) => {
+                    let mut pointer = UnsafeBufferPointer::new();
                     pointer.allocate(layout, on_err)?;
                     // Set the pointer at the offset of the control tags.
                     pointer.set_plus(slots_size);
@@ -138,7 +138,6 @@ impl MapIndex {
     /// - `cap` must be the same allocated capacity.
     #[inline]
     pub(crate) unsafe fn deallocate(&mut self, cap: usize) {
-        debug_assert!(!self.pointer.is_null());
         unsafe {
             match Self::index_layout(cap) {
                 Some((layout, slots_size)) => {
