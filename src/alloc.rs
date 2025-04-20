@@ -3,6 +3,7 @@ use core::marker::PhantomData;
 use core::ops::Range;
 use core::ptr;
 
+use crate::defer;
 use crate::error::{AllocError, OnError};
 use crate::opt::branch_prediction::likely;
 use std::alloc::{self, alloc};
@@ -728,6 +729,9 @@ impl<T> UnsafeBufferPointer<T> {
     /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
     /// the copy range `[0, count - 1]`.
     ///
+    /// This method is unwind-safe. It will call drop on the cloned elements when unwinding
+    /// starts.
+    ///
     /// This method is no-op if `count` is `0`.
     ///
     /// # Safety
@@ -746,13 +750,20 @@ impl<T> UnsafeBufferPointer<T> {
         debug_assert_allocated(self);
         debug_assert!(!source.is_null());
 
-        unsafe {
-            for i in 0..clone_count {
-                let src = source.add(i);
-                let dst = (self.ptr as *mut T).add(i);
-                ptr::write(dst, (*src).clone());
-            }
+        // The borrow checker will not allow mutable borrowing after defer.
+        let self_ptr = self.ptr as *mut T;
+
+        let mut drop_guard = defer!(0, cloned, self.drop_initialized(*cloned));
+
+        for i in 0..clone_count {
+            let src = source.add(i);
+            let dst = self_ptr.add(i);
+            ptr::write(dst, (*src).clone());
+            drop_guard.arg += 1; // <- Update.
         }
+
+        // All cloned successfully, deactivate.
+        drop_guard.deactivate();
     }
 }
 
@@ -1298,6 +1309,70 @@ mod ptr_tests {
             for i in 0..3 {
                 assert_eq!(*source.load(i), *target.load(i));
             }
+
+            source.deallocate(layout);
+            target.deallocate(layout);
+        }
+    }
+
+    struct PanicOnClone {
+        id: usize,
+        panic_on: usize,
+        dropped: Rc<RefCell<usize>>,
+    }
+
+    impl Clone for PanicOnClone {
+        fn clone(&self) -> Self {
+            if self.id == self.panic_on {
+                panic!("A clone with id {} panicked", self.id);
+            }
+            Self {
+                id: self.id,
+                panic_on: self.panic_on,
+                dropped: Rc::clone(&self.dropped),
+            }
+        }
+    }
+
+    impl Drop for PanicOnClone {
+        fn drop(&mut self) {
+            *self.dropped.borrow_mut() += 1;
+        }
+    }
+
+    #[test]
+    fn test_buffer_ptr_clone_from_safe_unwind() {
+        let mut source: UnsafeBufferPointer<PanicOnClone> = UnsafeBufferPointer::new();
+        let mut target: UnsafeBufferPointer<PanicOnClone> = UnsafeBufferPointer::new();
+        unsafe {
+            let layout = source.make_layout_unchecked(10);
+            let _ = source.allocate(layout, OnError::NoReturn);
+            let _ = target.allocate(layout, OnError::NoReturn);
+
+            let drop_counter = Rc::new(RefCell::new(0));
+            for i in 0..10 {
+                let value = PanicOnClone {
+                    id: i,
+                    panic_on: 5,
+                    dropped: Rc::clone(&drop_counter),
+                };
+                source.store(i, value);
+            }
+
+            // Camouflage to enter the catch_unwind block without safety complains.
+            let source_ptr = source.ptr as *const ();
+            let target_ptr = &mut target as *mut UnsafeBufferPointer<PanicOnClone> as *mut ();
+
+            let result = std::panic::catch_unwind(move || {
+                // Cast back to typed pointers.
+                let target = &mut *(target_ptr as *mut UnsafeBufferPointer<PanicOnClone>);
+                let source = source_ptr as *const PanicOnClone;
+                // Here we go...
+                target.clone_from(source, 10);
+            });
+
+            assert!(result.is_err());
+            assert_eq!(*drop_counter.borrow(), 5);
 
             source.deallocate(layout);
             target.deallocate(layout);

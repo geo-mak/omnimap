@@ -10,6 +10,7 @@ use core::{fmt, mem};
 use std::collections::hash_map::DefaultHasher;
 
 use crate::alloc::UnsafeBufferPointer;
+use crate::defer;
 use crate::error::{AllocError, OnError};
 use crate::index::{MapIndex, Tag};
 use crate::opt::branch_prediction::{likely, unlikely};
@@ -282,11 +283,11 @@ where
         cap: usize,
         on_err: OnError,
     ) -> Result<(), AllocError> {
-        // Important notes:
+        // Important:
         // - This method is designed to be recoverable, the map's state must remain unchanged
         //   until a total success. All or none.
         //
-        // - Allocation remains a runtime decision, it can fail regardless of the checking.
+        // - Allocation can fail regardless of the checking.
         unsafe {
             // The largest layout. Fallible, controlled.
             let layout = self.entries.make_layout(cap, on_err)?;
@@ -297,14 +298,14 @@ where
             // Fallible, controlled.
             index.allocate_uninit(cap, on_err)?;
 
-            // Activate index's guard to deallocate new index on sudden drop.
-            let index_guard = index.guard(cap);
+            // Activate deferred deallocation, to deallocate the new index on early return.
+            let dealloc_guard = defer!(cap, index.deallocate(*cap));
 
             // If the allocation fails, the allocated index will be deallocated by the guard.
             self.entries.allocate(layout, on_err)?;
 
             // Deactivate the guard.
-            index_guard.deactivate();
+            dealloc_guard.deactivate();
 
             // Update fields.
             self.index = index;
@@ -473,7 +474,7 @@ where
         // - This method is designed to be recoverable, the map's state must remain unchanged
         //   until a total success. All or none.
         //
-        // - Allocation remains a runtime decision, it can fail regardless of the checking.
+        // - Allocation can fail regardless of the checking.
         unsafe {
             // The largest layout. Fallible, controlled.
             let new_layout = self.entries.make_layout(new_cap, on_err)?;
@@ -487,8 +488,8 @@ where
             // Fallible, controlled.
             new_index.allocate_uninit(new_cap, on_err)?;
 
-            // Activate index's guard to deallocate new index on sudden drop.
-            let index_guard = new_index.guard(new_cap);
+            // Activate deferred deallocation, to deallocate the new index on early return.
+            let dealloc_guard = defer!(new_cap, new_index.deallocate(*new_cap));
 
             // If the new allocation fails, no deallocation will be done, and the allocated index
             // will be deallocated by the guard, however deallocation is considered infallible.
@@ -500,7 +501,7 @@ where
             debug_assert!(self.index.not_allocated());
 
             // Deactivate the guard.
-            index_guard.deactivate();
+            dealloc_guard.deactivate();
 
             // Update fields.
             self.index = new_index;
@@ -1606,6 +1607,7 @@ where
                 debug_assert!(instance.cap == cap);
                 // Clone's destructor is qualified to deallocate.
                 unsafe {
+                    // Unwind-safe. On panic, cloned items will be dropped.
                     instance
                         .entries
                         .clone_from(self.entries.pointer(), self.len);
