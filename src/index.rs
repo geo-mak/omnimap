@@ -62,7 +62,7 @@ impl MapIndex {
     #[inline]
     fn index_layout(cap: usize) -> Option<(Layout, usize)> {
         let slots_size = cap.checked_mul(Self::T_SIZE)?;
-        let aligned_tags = cap.checked_add(Self::T_ALIGN - 1)? & !(Self::T_ALIGN - 1);
+        let aligned_tags = (cap + Self::T_ALIGN - 1) & !(Self::T_ALIGN - 1);
         let total_size = slots_size.checked_add(aligned_tags)?;
         if Self::T_MAX_ALLOC_SIZE > total_size {
             // This layout thing is just awful...

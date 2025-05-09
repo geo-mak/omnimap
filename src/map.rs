@@ -1474,7 +1474,6 @@ where
     ///
     /// assert_eq!(map.capacity(), 16);
     /// ```
-    #[must_use]
     #[inline]
     fn default() -> Self {
         Self::with_capacity(Self::DEFAULT_CAPACITY)

@@ -899,6 +899,7 @@ mod ptr_tests {
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Pointer must be null")]
+    #[cfg_attr(miri, ignore)]
     fn test_buffer_ptr_allocate_allocated() {
         let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
         unsafe {
@@ -1251,6 +1252,7 @@ mod ptr_tests {
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Drop range must not be empty")]
+    #[cfg_attr(miri, ignore)]
     fn test_buffer_ptr_drop_range_invalid() {
         unsafe {
             let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
@@ -1261,6 +1263,7 @@ mod ptr_tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_buffer_ptr_drop_range() {
         // Drop counter with 0 count initially.
         let drop_count = Rc::new(RefCell::new(0));
@@ -1341,6 +1344,7 @@ mod ptr_tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_buffer_ptr_clone_from_safe_unwind() {
         let mut source: UnsafeBufferPointer<PanicOnClone> = UnsafeBufferPointer::new();
         let mut target: UnsafeBufferPointer<PanicOnClone> = UnsafeBufferPointer::new();
@@ -1382,6 +1386,7 @@ mod ptr_tests {
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Pointer must be deallocated before dropping")]
+    #[cfg_attr(miri, ignore)]
     fn test_buffer_ptr_drop() {
         let mut source: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
         unsafe {
