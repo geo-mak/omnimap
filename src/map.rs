@@ -172,7 +172,7 @@ where
     /// ```
     #[inline(always)]
     pub const fn capacity(&self) -> usize {
-        (self.cap * 7) / 8
+        (self.cap >> 3) * 7 + ((self.cap & 7) * 7 >> 3)
     }
 
     /// Returns the number of entries in the `OmniMap`.

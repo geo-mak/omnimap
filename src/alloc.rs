@@ -335,18 +335,18 @@ impl<T> UnsafeBufferPointer<T> {
         debug_assert_allocated(self);
 
         #[cfg(debug_assertions)]
-        debug_assert_copy_inbounds(allocated.size() / Self::T_SIZE, copy_count);
+        debug_layout_size_align(new.size(), new.align());
 
         #[cfg(debug_assertions)]
-        debug_layout_size_align(new.size(), new.align());
+        debug_layout_size_align(allocated.size(), allocated.align());
+
+        #[cfg(debug_assertions)]
+        debug_assert_copy_inbounds(allocated.size() / Self::T_SIZE, copy_count);
 
         let new_ptr = alloc(new) as *mut T;
 
         // Success branch.
         if likely(!new_ptr.is_null()) {
-            #[cfg(debug_assertions)]
-            debug_layout_size_align(allocated.size(), allocated.align());
-
             ptr::copy_nonoverlapping(self.ptr, new_ptr, copy_count);
 
             alloc::dealloc(self.ptr as *mut u8, allocated);
