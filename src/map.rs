@@ -232,8 +232,10 @@ where
     }
 
     /// Calculates the hash value for a key.
+    ///
+    /// > Note: The hash method of the `key` may panic.
     #[inline]
-    fn make_hash(&self, key: &K) -> usize {
+    fn make_hash(key: &K) -> usize {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         hasher.finish() as usize
@@ -740,7 +742,7 @@ where
             self.reclaim_or_reserve();
         }
 
-        let hash = self.make_hash(&key);
+        let hash = Self::make_hash(&key);
 
         let result = self.find(hash, &key);
 
@@ -800,7 +802,7 @@ where
             return None;
         }
 
-        let hash = self.make_hash(key);
+        let hash = Self::make_hash(key);
 
         let result = self.find(hash, key);
 
@@ -849,7 +851,7 @@ where
             return None;
         }
 
-        let hash = self.make_hash(key);
+        let hash = Self::make_hash(key);
 
         let result = self.find(hash, key);
 
@@ -973,7 +975,7 @@ where
     /// Map must not be empty when calling this method.
     #[inline]
     fn remove_entry<const SHIFT: bool>(&mut self, key: &K) -> Option<V> {
-        let hash = self.make_hash(key);
+        let hash = Self::make_hash(key);
 
         let result = self.find(hash, key);
 
