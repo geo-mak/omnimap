@@ -36,7 +36,6 @@ impl FindResult {
     }
 }
 
-#[derive(Debug)]
 pub struct Entry<K, V> {
     key: K,
     value: V,
@@ -61,6 +60,20 @@ where
             value: self.value.clone(),
             hash: self.hash,
         }
+    }
+}
+
+impl<K, V> Debug for Entry<K, V>
+where
+    K: Debug,
+    V: Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Entry")
+            .field("key", &self.key)
+            .field("value", &self.value)
+            .field("hash", &self.hash)
+            .finish()
     }
 }
 
