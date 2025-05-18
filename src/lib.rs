@@ -12,4 +12,4 @@ mod opt;
 
 // Public exports.
 pub use error::AllocError;
-pub use map::{Entry, OmniMap, OmniMapIntoIter};
+pub use map::{Entry, OmniMap, OmniMapIterator};

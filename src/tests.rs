@@ -2,7 +2,7 @@
 mod map_tests {
     use crate::error::AllocError;
     use crate::index::Tag;
-    use crate::map::{OmniMap, OmniMapIntoIter};
+    use crate::map::{OmniMap, OmniMapIterator};
     use core::cell::RefCell;
     use std::rc::Rc;
 
@@ -798,7 +798,7 @@ mod map_tests {
             map.insert(i, i + 1);
         }
 
-        let mut iter: OmniMapIntoIter<u8, u8> = map.into_iter();
+        let mut iter: OmniMapIterator<u8, u8> = map.into_iter();
 
         assert_eq!(iter.len(), 3);
         assert_eq!(iter.size_hint(), (3, Some(3)));

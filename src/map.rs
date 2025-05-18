@@ -78,12 +78,12 @@ where
 }
 
 /// An immutable iterable view of the entries in the map.
-pub type IterEntries<'a, K, V> = Map<Iter<'a, Entry<K, V>>, fn(&Entry<K, V>) -> (&K, &V)>;
+pub type EntriesIterator<'a, K, V> = Map<Iter<'a, Entry<K, V>>, fn(&Entry<K, V>) -> (&K, &V)>;
 
 /// A mutable iterable view of the entries in the map.
 ///
 /// The keys are immutable, only the values can be modified.
-pub type IterEntriesMut<'a, K, V> =
+pub type EntriesIteratorMut<'a, K, V> =
     Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> (&K, &mut V)>;
 
 /// A key-value data structure with hash-based indexing and ordered storage of entries, providing
@@ -1375,7 +1375,7 @@ where
     /// assert_eq!(map.iter().collect::<Vec<(&i32, &&str)>>(), vec![(&1, &"a"), (&2, &"b")]);
     /// ```
     #[inline]
-    pub fn iter(&self) -> IterEntries<'_, K, V> {
+    pub fn iter(&self) -> EntriesIterator<'_, K, V> {
         self.iter_entries().map(|entry| (&entry.key, &entry.value))
     }
 
@@ -1399,7 +1399,7 @@ where
     /// assert_eq!(map.get(&2), Some(&"c"));
     /// ```
     #[inline]
-    pub fn iter_mut(&mut self) -> IterEntriesMut<'_, K, V> {
+    pub fn iter_mut(&mut self) -> EntriesIteratorMut<'_, K, V> {
         self.iter_entries_mut()
             .map(|entry| (&entry.key, &mut entry.value))
     }
@@ -1557,7 +1557,7 @@ where
     K: Eq + Hash,
 {
     type Item = (&'a K, &'a V);
-    type IntoIter = IterEntries<'a, K, V>;
+    type IntoIter = EntriesIterator<'a, K, V>;
 
     /// Returns an iterator over the entries.
     fn into_iter(self) -> Self::IntoIter {
@@ -1570,7 +1570,7 @@ where
     K: Eq + Hash,
 {
     type Item = (&'a K, &'a mut V);
-    type IntoIter = IterEntriesMut<'a, K, V>;
+    type IntoIter = EntriesIteratorMut<'a, K, V>;
 
     /// Returns a mutable iterator over the entries.
     fn into_iter(self) -> Self::IntoIter {
@@ -1695,15 +1695,15 @@ where
     }
 }
 
-/// An owning iterator over the entries of an `OmniMap`.
-pub struct OmniMapIntoIter<K, V> {
+/// An owning iterator over the entries of the map.
+pub struct OmniMapIterator<K, V> {
     entries: UnsafeBufferPointer<Entry<K, V>>,
     cap: usize,
     offset: usize,
     end: usize,
 }
 
-impl<K, V> Iterator for OmniMapIntoIter<K, V> {
+impl<K, V> Iterator for OmniMapIterator<K, V> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -1725,7 +1725,7 @@ impl<K, V> Iterator for OmniMapIntoIter<K, V> {
     ///
     /// This method calls [`len`] internally which you can use directly.
     ///
-    /// [`len`]: OmniMapIntoIter::len()
+    /// [`len`]: OmniMapIterator::len()
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.len();
@@ -1733,7 +1733,7 @@ impl<K, V> Iterator for OmniMapIntoIter<K, V> {
     }
 }
 
-impl<K, V> ExactSizeIterator for OmniMapIntoIter<K, V> {
+impl<K, V> ExactSizeIterator for OmniMapIterator<K, V> {
     /// Returns the number of remaining entries in the iterator.
     #[inline(always)]
     fn len(&self) -> usize {
@@ -1741,7 +1741,7 @@ impl<K, V> ExactSizeIterator for OmniMapIntoIter<K, V> {
     }
 }
 
-impl<K, V> Drop for OmniMapIntoIter<K, V> {
+impl<K, V> Drop for OmniMapIterator<K, V> {
     fn drop(&mut self) {
         if self.entries.is_null() {
             return;
@@ -1763,7 +1763,7 @@ impl<K, V> Drop for OmniMapIntoIter<K, V> {
 
 impl<K, V> IntoIterator for OmniMap<K, V> {
     type Item = (K, V);
-    type IntoIter = OmniMapIntoIter<K, V>;
+    type IntoIter = OmniMapIterator<K, V>;
 
     /// Consumes the `OmniMap` and returns an iterator over its entries.
     ///
@@ -1784,7 +1784,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
     /// assert_eq!(iter.next(), None);
     /// ```
     fn into_iter(self) -> Self::IntoIter {
-        let mut iterator = OmniMapIntoIter {
+        let mut iterator = OmniMapIterator {
             entries: UnsafeBufferPointer::new(),
             cap: 0,
             end: 0,
