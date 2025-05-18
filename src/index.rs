@@ -317,7 +317,7 @@ mod index_tests {
         let mut instance = MapIndex::new_unallocated();
         unsafe {
             instance.allocate_uninit(10, OnError::NoReturn).unwrap();
-            
+
             instance.set_tags_empty(10);
 
             for i in 0..10 {
@@ -337,7 +337,7 @@ mod index_tests {
         let mut source = MapIndex::new_unallocated();
         unsafe {
             source.allocate_uninit(10, OnError::NoReturn).unwrap();
-            
+
             source.set_tags_empty(10);
 
             for i in 0..10 {

@@ -8,7 +8,7 @@
 /// > capacity equal to the number of key-value pairs to avoid resizing.
 ///
 /// ```
-/// use omni_map::map;
+/// use omnimap::map;
 ///
 /// let dict = map! {
 ///  "one" : 1,
@@ -32,7 +32,7 @@
 /// > number of key-value pairs to avoid resizing.
 ///
 /// ```
-/// use omni_map::map;
+/// use omnimap::map;
 ///
 /// let dict = map! {
 ///   10; // Capacity

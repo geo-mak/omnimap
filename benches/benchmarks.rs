@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 use std::collections::HashMap;
 
 // Benchmarking module for OmniMap.

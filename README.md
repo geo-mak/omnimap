@@ -19,7 +19,7 @@ A key-value data structure with characteristics of both hash maps and vectors.
 
 ### Create a new OmniMap without initial capacity
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     // The map will allocate with first insertion and will grow as needed.
@@ -36,7 +36,7 @@ fn main(){
 ### Create a new OmniMap using the declarative syntax
 The declarative syntax consists of a list of key-value pairs separated by a colon `:` and enclosed in curly braces `{}`.
 ```rust
-use omni_map::map;
+use omnimap::map;
 
 fn main() {
     // The map will pre-allocate capacity equal to the number of key-value pairs to avoid reallocations.
@@ -56,7 +56,7 @@ fn main() {
 
 ### Create a new OmniMap with a capacity
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     // Creating a map with a capacity is much more efficient when the number of items is known in advance.
@@ -73,7 +73,7 @@ fn main(){
 
 ### Create a new OmniMap with capacity using the declarative syntax
 ```rust
-use omni_map::map;
+use omnimap::map;
 
 fn main() {
     // The map will allocate with the specified capacity and will grow as needed.
@@ -94,7 +94,7 @@ fn main() {
 
 ### Creating new OmniMap with default capacity
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     // By default, the map will allocate with a capacity of 16.
@@ -110,7 +110,7 @@ fn main(){
 
 ### Inserting new items into the map with order preservation
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -139,7 +139,7 @@ fn main(){
 
 ### Updating value of an existing key
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -158,7 +158,7 @@ fn main(){
 
 ### **Immutable** access to value by key
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -172,7 +172,7 @@ fn main(){
 
 ### **Mutable** access to value by key
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -192,7 +192,7 @@ fn main(){
 
 ### Access value by index
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -219,7 +219,7 @@ fn main(){
 
 ### **Immutable** access to the first and last items in the map
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -238,7 +238,7 @@ fn main(){
 
 ### Removing items and preserve order
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -277,7 +277,7 @@ fn main(){
 
 ### Removing the first item in the map
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -307,7 +307,7 @@ fn main(){
 
 ### Removing the last item in the map
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -337,7 +337,7 @@ fn main(){
 
 ### Reserving extra capacity
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::new();
@@ -358,7 +358,7 @@ fn main(){
 
 ### Shrinking the capacity to fit the number of items
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
     let mut map = OmniMap::default();
@@ -385,7 +385,7 @@ fn main(){
 
 ### Shrinking the map to a specific capacity
 ```rust
-use omni_map::OmniMap;
+use omnimap::OmniMap;
 
 fn main(){
 

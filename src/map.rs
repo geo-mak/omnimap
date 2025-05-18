@@ -98,7 +98,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let map: OmniMap<i32, &str> = OmniMap::new();
     ///
@@ -123,7 +123,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let map: OmniMap<i32, &str> = OmniMap::with_capacity(10);
     ///
@@ -159,7 +159,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let map: OmniMap<i32, &str> = OmniMap::new();
     /// assert_eq!(map.capacity(), 0);
@@ -180,7 +180,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -201,7 +201,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let map: OmniMap<i32, &str> = OmniMap::new();
     ///
@@ -579,7 +579,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -622,7 +622,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::{AllocError, OmniMap};
+    /// use omnimap::{AllocError, OmniMap};
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -701,7 +701,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -769,7 +769,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -814,7 +814,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -863,7 +863,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     /// map.insert(1, "a");
@@ -899,7 +899,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     /// map.insert(1, "a");
@@ -929,7 +929,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -1024,7 +1024,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -1069,7 +1069,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -1110,7 +1110,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     /// map.insert(1, "a");
@@ -1166,7 +1166,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     /// map.insert(1, "a");
@@ -1212,7 +1212,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::with_capacity(10);
     ///
@@ -1253,7 +1253,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::with_capacity(10);
     ///
@@ -1294,7 +1294,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     /// map.insert(1, "a");
@@ -1350,7 +1350,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -1369,7 +1369,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -1394,7 +1394,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -1413,7 +1413,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -1468,7 +1468,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let map: OmniMap<i32, &str> = OmniMap::default();
     ///
@@ -1492,7 +1492,7 @@ impl<K, V> Index<usize> for OmniMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -1518,7 +1518,7 @@ impl<K, V> IndexMut<usize> for OmniMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -1636,7 +1636,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::with_capacity(5);
     /// map.insert(1, "a");
@@ -1755,7 +1755,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use omni_map::OmniMap;
+    /// use omnimap::OmniMap;
     ///
     /// let mut map = OmniMap::new();
     ///
