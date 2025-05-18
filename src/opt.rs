@@ -7,8 +7,6 @@ pub(crate) mod branch_prediction {
 
     /// Hints to the compiler that branch `condition` is likely to be true.
     /// Returns the value passed to it.
-    ///
-    /// Any use other than with `if` statements will probably not have an effect.
     #[inline(always)]
     pub(crate) const fn likely(condition: bool) -> bool {
         if condition {
@@ -21,8 +19,6 @@ pub(crate) mod branch_prediction {
 
     /// Hints to the compiler that branch `condition` is likely to be false.
     /// Returns the value passed to it.
-    ///
-    /// Any use other than with `if` statements will probably not have an effect.
     #[inline(always)]
     pub(crate) const fn unlikely(condition: bool) -> bool {
         if condition {
@@ -46,7 +42,7 @@ macro_rules! defer {
     };
 }
 
-/// A deferred expression that takes effect on drop.
+/// Control structure to execute an expression on drop.
 /// Execution can be disabled in the scope using method `deactivate()`.
 pub(crate) struct Defer<T, F>
 where

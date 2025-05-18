@@ -251,7 +251,6 @@ impl<T> UnsafeBufferPointer<T> {
 
         let ptr = alloc(layout) as *mut T;
 
-        // Success branch.
         if likely(!ptr.is_null()) {
             self.ptr = ptr;
             return Ok(());
@@ -345,7 +344,6 @@ impl<T> UnsafeBufferPointer<T> {
 
         let new_ptr = alloc(new) as *mut T;
 
-        // Success branch.
         if likely(!new_ptr.is_null()) {
             ptr::copy_nonoverlapping(self.ptr, new_ptr, copy_count);
 
@@ -362,7 +360,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// Returns the base pointer.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn pointer(&self) -> *const T {
+    pub(crate) const unsafe fn access(&self) -> *const T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -372,7 +370,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// Returns the base pointer as a pointer of type `C`.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn pointer_as<C>(&self) -> *const C {
+    pub(crate) const unsafe fn access_as<C>(&self) -> *const C {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -382,7 +380,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// Returns the base pointer as a mutable pointer of type `C`.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn pointer_mut_as<C>(&mut self) -> *mut C {
+    pub(crate) const unsafe fn access_mut_as<C>(&mut self) -> *mut C {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -640,7 +638,7 @@ impl<T> UnsafeBufferPointer<T> {
     ///
     /// The total drop `count` equals `end - start - 1`.
     ///
-    /// This method is no-op when `T` is of trivial type.
+    /// This method is no-op if `T` is of a trivial type.
     ///
     /// # Safety
     ///

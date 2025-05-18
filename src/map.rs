@@ -25,7 +25,7 @@ impl FindResult {
     const fn just_slot(slot: usize) -> Self {
         Self {
             slot,
-            // Outside the representable range of any allocation size or offset.
+            // Invalid offset used as a sentinel value to indicate absence.
             entry: usize::MAX,
         }
     }
@@ -298,42 +298,26 @@ where
         cap: usize,
         on_err: OnError,
     ) -> Result<(), AllocError> {
-        // Important:
-        // - This method is designed to be recoverable, the map's state must remain unchanged
-        //   until a total success. All or none.
-        //
-        // - Allocation can fail regardless of the checking.
         unsafe {
-            // The largest layout. Fallible, controlled.
             let layout = self.entries.make_layout(cap, on_err)?;
 
-            // Index is much cheaper to deallocate on error.
             let mut index = MapIndex::new_unallocated();
 
-            // Fallible, controlled.
             index.allocate_uninit(cap, on_err)?;
 
-            // Activate deferred deallocation, to deallocate the new index on early return.
             let dealloc_guard = defer!(cap, index.deallocate(*cap));
 
-            // If the allocation fails, the allocated index will be deallocated by the guard.
             self.entries.allocate(layout, on_err)?;
 
-            // Deactivate the guard.
             dealloc_guard.deactivate();
 
-            // Update fields.
             self.index = index;
             self.cap = cap;
 
-            // Map's destructor is fully qualified.
-
             if INIT {
-                // Initialize control tags.
                 self.index.set_tags_empty(cap);
             }
 
-            // Should be:
             Ok(())
         }
     }
@@ -485,51 +469,32 @@ where
     /// - `new_cap` must be greater than `0` and the current length.
     ///
     fn reallocate_reindex(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
-        // Important:
-        // - This method is designed to be recoverable, the map's state must remain unchanged
-        //   until a total success. All or none.
-        //
-        // - Allocation can fail regardless of the checking.
         unsafe {
-            // The largest layout. Fallible, controlled.
             let new_layout = self.entries.make_layout(new_cap, on_err)?;
 
-            // Already allocated. Infallible, uncontrolled.
             let current_layout = self.entries.make_layout_unchecked(self.cap);
 
-            // Index is much cheaper to deallocate on error.
             let mut new_index = MapIndex::new_unallocated();
 
-            // Fallible, controlled.
             new_index.allocate_uninit(new_cap, on_err)?;
 
-            // Activate deferred deallocation, to deallocate the new index on early return.
             let dealloc_guard = defer!(new_cap, new_index.deallocate(*new_cap));
 
-            // If the new allocation fails, no deallocation will be done, and the allocated index
-            // will be deallocated by the guard, however deallocation is considered infallible.
             self.entries
                 .reallocate(current_layout, new_layout, self.len, on_err)?;
 
-            // Infallible, unguarded.
             self.index.deallocate(self.cap);
             debug_assert!(self.index.not_allocated());
 
-            // Deactivate the guard.
             dealloc_guard.deactivate();
 
-            // Update fields.
             self.index = new_index;
             self.cap = new_cap;
             self.deleted = 0;
 
-            // Map's destructor is fully qualified.
-
-            // Initialize control tags and rebuild index.
             self.index.set_tags_empty(new_cap);
             self.build_index();
 
-            // Should be:
             Ok(())
         }
     }
@@ -1601,12 +1566,6 @@ where
     ///
     /// The map must be allocated and not empty before calling this method.
     fn make_clone<const COMPACT: bool>(&self) -> OmniMap<K, V> {
-        // When COMPACT is true, execution takes this path:
-        // 1 - Computes allocation capacity according to the current length.
-        // 2 - Allocates new instance with initialized control tags.
-        // 3 - Clones entries without copying index's data.
-        // 4 - Sets the delete counter of the cloned instance to 0.
-        // 5 - Builds the index.
         let cap = if COMPACT {
             // len + required reserves.
             Self::allocation_capacity_unchecked(self.len)
@@ -1619,14 +1578,10 @@ where
         match instance.allocate::<COMPACT>(cap, OnError::NoReturn) {
             Ok(_) => {
                 debug_assert!(instance.cap == cap);
-                // Clone's destructor is qualified to deallocate.
                 unsafe {
                     // Unwind-safe. On panic, cloned items will be dropped.
-                    instance
-                        .entries
-                        .clone_from(self.entries.pointer(), self.len);
+                    instance.entries.clone_from(self.entries.access(), self.len);
                     instance.len = self.len;
-                    // Clone's destructor is qualified to deallocate and drop.
                     if COMPACT {
                         instance.deleted = 0;
                         instance.build_index();
