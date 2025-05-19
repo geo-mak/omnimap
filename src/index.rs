@@ -154,7 +154,7 @@ impl MapIndex {
     ///   reallocating and using `Tag` enum to store tag's value.
     #[inline(always)]
     pub(crate) const unsafe fn read_tag(&self, offset: usize) -> Tag {
-        unsafe { self.pointer.access_as::<Tag>().add(offset).read() }
+        self.pointer.access_as::<Tag>().add(offset).read()
     }
 
     /// Stores the control tag at the specified tag's `offset`.
@@ -164,9 +164,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn store_tag(&mut self, offset: usize, tag: Tag) {
-        unsafe {
-            self.pointer.store(offset, tag as u8);
-        }
+        self.pointer.store(offset, tag as u8);
     }
 
     /// Returns a mutable reference to the control tag in the index at tag's `offset`.
@@ -179,7 +177,7 @@ impl MapIndex {
     ///   reallocating and using `Tag` enum to store tag's value.
     #[inline(always)]
     pub(crate) const unsafe fn tag_ref_mut(&mut self, offset: usize) -> &mut Tag {
-        unsafe { &mut *self.pointer.access_mut_as::<Tag>().add(offset) }
+        &mut *self.pointer.access_mut_as::<Tag>().add(offset)
     }
 
     /// Reads and returns the slot's value according to the specified tag's `offset`.
@@ -189,7 +187,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn read_entry_index(&self, offset: usize) -> usize {
-        unsafe { self.pointer.access_as::<usize>().sub(offset + 1).read() }
+        self.pointer.access_as::<usize>().sub(offset + 1).read()
     }
 
     /// Stores slot's value according to the specified tag's `offset`.
@@ -199,12 +197,10 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn store_entry_index(&mut self, offset: usize, value: usize) {
-        unsafe {
-            self.pointer
-                .access_mut_as::<usize>()
-                .sub(offset + 1)
-                .write(value)
-        }
+        self.pointer
+            .access_mut_as::<usize>()
+            .sub(offset + 1)
+            .write(value)
     }
 
     /// Returns a mutable reference to a slot's value according to the specified tag's `offset`.
@@ -214,7 +210,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn entry_index_ref_mut(&mut self, offset: usize) -> &mut usize {
-        unsafe { &mut *self.pointer.access_mut_as::<usize>().sub(offset + 1) }
+        &mut *self.pointer.access_mut_as::<usize>().sub(offset + 1)
     }
 
     /// Stores the control tag and slot's value at the specified tag's `offset`.
@@ -235,7 +231,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn set_tags_empty(&mut self, cap: usize) {
-        unsafe { self.pointer.memset_zero(cap) }
+        self.pointer.memset_zero(cap)
     }
 }
 
