@@ -85,23 +85,22 @@ impl MapIndex {
         }
     }
 
-    /// Allocates the index with the capacity `cap`, without initializing control tags.
+    /// Creates new instance and allocates memory according to the capacity `cap`, without
+    /// initializing control tags.
     ///
     /// Handling of errors will be done according to the error handling context `on_err`.
     #[inline]
-    pub(crate) unsafe fn allocate_uninit(
-        &mut self,
+    pub(crate) unsafe fn new_allocate_uninit(
         cap: usize,
         on_err: OnError,
-    ) -> Result<(), AllocError> {
+    ) -> Result<Self, AllocError> {
         match Self::index_layout(cap) {
             Some((layout, slots_size)) => {
                 let mut pointer = UnsafeBufferPointer::new();
                 pointer.allocate(layout, on_err)?;
                 // Set the pointer at the offset of the control tags.
                 pointer.set_plus(slots_size);
-                self.pointer = pointer;
-                Ok(())
+                Ok(Self { pointer })
             }
             None => Err(on_err.overflow()),
         }
@@ -246,12 +245,6 @@ mod index_tests {
     use crate::defer;
 
     #[test]
-    fn test_index_new() {
-        let instance = MapIndex::new_unallocated();
-        assert!(instance.pointer.is_null());
-    }
-
-    #[test]
     fn test_index_layout() {
         let (layout, slots_size) = MapIndex::index_layout(10).unwrap();
 
@@ -264,12 +257,16 @@ mod index_tests {
     }
 
     #[test]
-    fn test_index_allocate_uninitialized() {
-        let mut instance = MapIndex::new_unallocated();
+    fn test_index_new() {
+        let instance = MapIndex::new_unallocated();
         assert!(instance.pointer.is_null());
+    }
+
+    #[test]
+    fn test_index_new_allocate_uninitialized() {
         unsafe {
-            let result = instance.allocate_uninit(10, OnError::NoReturn);
-            assert!(result.is_ok());
+            let mut instance = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
+
             assert!(!instance.pointer.is_null());
 
             instance.deallocate(10)
@@ -278,20 +275,16 @@ mod index_tests {
 
     #[test]
     fn test_index_allocate_uninitialized_error() {
-        let mut instance = MapIndex::new_unallocated();
-        assert!(instance.pointer.is_null());
         unsafe {
-            let result = instance.allocate_uninit(isize::MAX as usize, OnError::ReturnErr);
+            let result = MapIndex::new_allocate_uninit(isize::MAX as usize, OnError::ReturnErr);
             assert!(result.is_err());
-            assert!(instance.pointer.is_null());
         }
     }
 
     #[test]
     fn test_index_store_read_tags() {
-        let mut instance = MapIndex::new_unallocated();
         unsafe {
-            instance.allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut instance = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
 
             instance.set_tags_empty(10);
 
@@ -313,9 +306,8 @@ mod index_tests {
 
     #[test]
     fn test_index_store_read_entry_index() {
-        let mut instance = MapIndex::new_unallocated();
         unsafe {
-            instance.allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut instance = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
 
             instance.set_tags_empty(10);
 
@@ -333,9 +325,8 @@ mod index_tests {
 
     #[test]
     fn test_index_initialize_from() {
-        let mut source = MapIndex::new_unallocated();
         unsafe {
-            source.allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut source = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
 
             source.set_tags_empty(10);
 
@@ -346,11 +337,8 @@ mod index_tests {
             for i in 0..10 {
                 source.store_entry_index(i, 11)
             }
-        }
 
-        let mut target = MapIndex::new_unallocated();
-        unsafe {
-            let _ = target.allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut target = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
 
             target.copy_from(&source, 10);
 
@@ -361,9 +349,7 @@ mod index_tests {
             for i in 0..10 {
                 assert_eq!(target.read_entry_index(i), 11);
             }
-        }
 
-        unsafe {
             source.deallocate(10);
             target.deallocate(10)
         }
@@ -371,9 +357,8 @@ mod index_tests {
 
     #[test]
     fn test_index_reset_control_tags() {
-        let mut instance = MapIndex::new_unallocated();
         unsafe {
-            instance.allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut instance = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
 
             instance.set_tags_empty(10);
 
@@ -393,38 +378,36 @@ mod index_tests {
 
     #[test]
     fn test_index_scope_guard() {
-        let cap = 10;
-        let mut instance = MapIndex::new_unallocated();
-
         unsafe {
-            instance.allocate_uninit(cap, OnError::NoReturn).unwrap();
+            let cap = 10;
+            let mut instance = MapIndex::new_allocate_uninit(cap, OnError::NoReturn).unwrap();
             assert!(!instance.pointer.is_null());
 
-            let _ = defer!(cap, instance.deallocate(*cap));
-            // Out of scope, dropped.
-        }
+            {
+                let _ = defer!(cap, instance.deallocate(*cap));
+                // Out of scope, dropped.
+            }
 
-        // Deallocated.
-        assert!(instance.pointer.is_null());
+            // Deallocated.
+            assert!(instance.pointer.is_null());
+        }
     }
 
     #[test]
     fn test_index_scope_guard_deactivate() {
-        let cap = 10;
-        let mut instance = MapIndex::new_unallocated();
-
         unsafe {
-            instance.allocate_uninit(cap, OnError::NoReturn).unwrap();
+            let cap = 10;
+            let mut instance = MapIndex::new_allocate_uninit(cap, OnError::NoReturn).unwrap();
             assert!(!instance.pointer.is_null());
 
-            let guard = defer!(cap, instance.deallocate(*cap));
-            guard.deactivate();
-            // Out of scope.
-        }
+            {
+                let guard = defer!(cap, instance.deallocate(*cap));
+                guard.deactivate();
+                // Out of scope.
+            }
 
-        // Still allocated.
-        assert!(!instance.pointer.is_null());
-        unsafe {
+            // Still allocated.
+            assert!(!instance.pointer.is_null());
             instance.deallocate(10);
         }
     }

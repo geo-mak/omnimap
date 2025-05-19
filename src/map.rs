@@ -301,9 +301,7 @@ where
         unsafe {
             let layout = self.entries.make_layout(cap, on_err)?;
 
-            let mut index = MapIndex::new_unallocated();
-
-            index.allocate_uninit(cap, on_err)?;
+            let mut index = MapIndex::new_allocate_uninit(cap, on_err)?;
 
             let dealloc_guard = defer!(cap, index.deallocate(*cap));
 
@@ -474,9 +472,7 @@ where
 
             let current_layout = self.entries.make_layout_unchecked(self.cap);
 
-            let mut new_index = MapIndex::new_unallocated();
-
-            new_index.allocate_uninit(new_cap, on_err)?;
+            let mut new_index = MapIndex::new_allocate_uninit(new_cap, on_err)?;
 
             let dealloc_guard = defer!(new_cap, new_index.deallocate(*new_cap));
 
