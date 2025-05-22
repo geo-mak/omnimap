@@ -3,12 +3,13 @@
 
 A key-value data structure with characteristics of both hash maps and vectors.
 
+Originally intended as a lightweight indexed key-value store for high-performance parsers.
+
 ## Features
 - Relatively simple and compact implementation that mostly relay on `core` intrinsics.
 - Maintains the order in which items are inserted.
 - Order preservation of items during all operations including: insertion, updating and **removing**.
 - Optimized for fast access.
-- Set of very useful methods and functions inspired by both hash maps and vectors.
 
 ## **Notes**:
 - No release has been made yet and must not be considered for production use.
