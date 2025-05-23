@@ -119,9 +119,9 @@ impl MapIndex {
         let unaligned_size = slots_size + cap;
 
         let source_start = source.pointer.access().sub(slots_size);
-        let target_start = self.pointer.access().sub(slots_size);
+        let self_start = self.pointer.access().sub(slots_size);
 
-        core::ptr::copy_nonoverlapping(source_start, target_start as *mut u8, unaligned_size)
+        core::ptr::copy_nonoverlapping(source_start, self_start as *mut u8, unaligned_size)
     }
 
     /// Resets the pointer to the start of the allocated buffer and deallocates the current index

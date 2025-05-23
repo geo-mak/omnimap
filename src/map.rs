@@ -474,11 +474,11 @@ where
         unsafe {
             let new_layout = self.entries.make_layout(new_cap, on_err)?;
 
-            let current_layout = self.entries.make_layout_unchecked(self.cap);
-
             let mut new_index = MapIndex::new_allocate_uninit(new_cap, on_err)?;
 
             let dealloc_guard = defer!(new_cap, new_index.deallocate(*new_cap));
+
+            let current_layout = self.entries.make_layout_unchecked(self.cap);
 
             self.entries
                 .reallocate(current_layout, new_layout, self.len, on_err)?;
@@ -503,7 +503,7 @@ where
     ///
     /// This method panics when overflow occurs or when allocation fails.
     fn reclaim_or_reserve(&mut self) {
-        if self.len < self.cap / 2 {
+        if self.len < self.cap >> 1 {
             // Reclaiming deleted slots without reallocation.
             self.reindex();
         } else {
