@@ -84,7 +84,7 @@ pub type EntriesIterator<'a, K, V> = Map<Iter<'a, Entry<K, V>>, fn(&Entry<K, V>)
 ///
 /// The keys are immutable, only the values can be modified.
 pub type EntriesIteratorMut<'a, K, V> =
-    Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> (&K, &mut V)>;
+Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> (&K, &mut V)>;
 
 /// A key-value data structure with hash-based indexing and ordered storage of entries, providing
 /// fast insertion, deletion, and retrieval of entries.
@@ -132,6 +132,10 @@ where
     }
 
     /// Creates a new `OmniMap` with the specified `capacity`.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if capacity overflow occurs, or when allocation fails.
     ///
     /// # Examples
     ///
@@ -537,20 +541,20 @@ where
         }
     }
 
-    /// Reserves capacity for `additional` more elements.
+    /// Reserves capacity for `additional` elements in advance.
     ///
     /// The resulting capacity will be equal to `self.capacity() + additional` or _more_ to
     /// maintain the load factor.
     ///
     /// This method is no-op if `additional` is `0`.
     ///
+    /// # Panics
+    ///
+    /// This method will panic if capacity overflow occurs, or when allocation fails.
+    ///
     /// # Time Complexity
     ///
     /// _O_(n) on average.
-    ///
-    /// # Parameters
-    ///
-    /// - `additional`: The number of additional elements to reserve space for.
     ///
     /// # Examples
     ///
@@ -577,7 +581,7 @@ where
         };
     }
 
-    /// Tries to reserve capacity for `additional` more elements.
+    /// Tries to reserve capacity for `additional` elements in advance.
     ///
     /// This method is semantically equivalent to [`OmniMap::reserve`], except that it returns an
     /// error instead of panicking when the allocation fails.
@@ -590,10 +594,6 @@ where
     /// # Time Complexity
     ///
     /// _O_(n) on average.
-    ///
-    /// # Parameters
-    ///
-    /// - `additional`: The number of additional elements to reserve space for.
     ///
     /// # Examples
     ///
@@ -670,6 +670,10 @@ where
     ///
     /// - `value`: The value to associate with the key.
     ///
+    /// # Panics
+    ///
+    /// This method will panic if capacity overflow occurs, or when allocation fails.
+    ///
     /// # Time Complexity
     ///
     /// _O_(1) Amortized.
@@ -706,8 +710,7 @@ where
         let hash = Self::make_hash(&key);
 
         let result = self.find(hash, &key);
-
-        // Key exists, update the value and return the old one.
+        
         if result.entry_exists() {
             let entry = unsafe { self.entries.load_mut(result.entry) };
             let old_val = mem::replace(&mut entry.value, value);
@@ -939,8 +942,7 @@ where
         let hash = Self::make_hash(key);
 
         let result = self.find(hash, key);
-
-        // Key is found, remove the entry.
+        
         if result.entry_exists() {
             let index = result.entry;
 
@@ -1441,6 +1443,10 @@ where
     /// Creates a new `OmniMap` with the default capacity.
     /// The default capacity is set to `16`.
     ///
+    /// # Panics
+    ///
+    /// This function will panic when allocation fails.
+    ///
     /// # Examples
     ///
     /// ```
@@ -1599,6 +1605,10 @@ where
     /// storage is reduced to fit the current number of elements. This can help reduce
     /// memory usage if the map has a lot of unused capacity.
     ///
+    /// # Panics
+    ///
+    /// This method will panic when allocation fails.
+    ///
     /// # Examples
     ///
     /// ```
@@ -1636,6 +1646,10 @@ where
     ///
     /// If capacity is a concern, use the `clone_compact` method to create a clone with a capacity
     /// equal to the number of elements.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic when allocation fails.
     #[inline]
     fn clone(&self) -> Self {
         // Return an unallocated instance if the original is unallocated.
@@ -1742,33 +1756,22 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
             offset: 0,
         };
 
-        // Return an empty iterator if the map is empty.
         if self.len == 0 {
             return iterator;
         }
 
-        // Set the capacity and the length.
         iterator.cap = self.cap;
         iterator.end = self.len;
 
-        // Disable the destructor of the map.
         let mut manual_self = ManuallyDrop::new(self);
 
-        // (Len > 0) -> (capacity > 0) -> entries and index are allocated.
+        // The fields that need deallocation are index and entries.
+        // index must be deallocated here and entries shall be deallocated by the iterator.
         unsafe {
-            // The fields that need deallocation are index and entries.
-            // index must be deallocated here and entries shall be deallocated by the iterator.
-
-            // Deallocate the index.
             manual_self.index.deallocate(iterator.cap);
-
-            // Obtain the pointer of the allocated entries and invalidate the original.
-            // This will make the iterator the owner of the allocated memory of the entries,
-            // and the one responsible for deallocating it.
             iterator.entries = manual_self.entries.invalidate();
         }
 
-        // Done.
         iterator
     }
 }
@@ -1790,7 +1793,7 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{{")?;
-        // This is safe even if the map is not allocated.
+        // This call is safe even if the map is not allocated.
         for entry in self.iter_entries() {
             writeln!(f, "    {}: {}", entry.key, entry.value)?;
         }

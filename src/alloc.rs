@@ -220,12 +220,23 @@ impl<T> UnsafeBufferPointer<T> {
     ///
     /// This method handles allocation error according to the error handling context `on_err`.
     ///
+    /// Note that the process may be terminated even if the allocation was successful, because
+    /// detecting memory allocation failures at the process-level is platform-specific.
+    ///
+    /// For instance, on some systems like linux, overcommit is allowed by default, which means 
+    /// that the kernel will map virtual memory to the process regardless of the backing memory, 
+    /// only to invoke the so-called _OOM killer_ later, and the process may become a target for 
+    /// termination.
+    ///
+    /// For better safety, consult the platform-specific documentation regarding out-of-memory 
+    /// (OOM) behavior.
+    ///
     /// # Safety
     ///
     /// - Pointer must be `null` before calling this method.
-    ///   This method doesn't deallocate the allocated memory space pointed by the pointer.
-    ///   Calling this method with a non-null pointer might cause memory leaks, as the allocated
-    ///   memory space will be lost.
+    ///   This method doesn't deallocate the allocated memory space pointed to by this pointer.
+    ///   Calling this method with a non-null pointer causes memory leaks, as access to the 
+    ///   allocated memory space will be lost without freeing it.
     ///
     /// - `align` must be a power of 2.
     ///
