@@ -642,19 +642,17 @@ where
     fn find(&self, hash: usize, key: &K) -> FindResult {
         unsafe {
             let mut slot = hash % self.cap;
-            // For all valid models: (empty slots exist) -> (unbounded loop can't be infinite).
             loop {
                 match self.index.read_tag(slot) {
-                    Tag::Empty => return FindResult::just_slot(slot),
                     Tag::Occupied => {
                         let entry = self.index.read_entry_index(slot);
                         if self.entries.load(entry).key == *key {
                             return FindResult { slot, entry };
                         }
                     }
+                    Tag::Empty => return FindResult::just_slot(slot),
                     Tag::Deleted => {}
                 }
-
                 slot = (slot + 1) % self.cap;
             }
         }
