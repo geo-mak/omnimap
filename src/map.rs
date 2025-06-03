@@ -84,7 +84,7 @@ pub type EntriesIterator<'a, K, V> = Map<Iter<'a, Entry<K, V>>, fn(&Entry<K, V>)
 ///
 /// The keys are immutable, only the values can be modified.
 pub type EntriesIteratorMut<'a, K, V> =
-Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> (&K, &mut V)>;
+    Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> (&K, &mut V)>;
 
 /// A key-value data structure with hash-based indexing and ordered storage of entries, providing
 /// fast insertion, deletion, and retrieval of entries.
@@ -642,19 +642,17 @@ where
     fn find(&self, hash: usize, key: &K) -> FindResult {
         unsafe {
             let mut slot = hash % self.cap;
-            // For all valid models: (empty slots exist) -> (unbounded loop can't be infinite).
             loop {
                 match self.index.read_tag(slot) {
-                    Tag::Empty => return FindResult::just_slot(slot),
                     Tag::Occupied => {
                         let entry = self.index.read_entry_index(slot);
                         if self.entries.load(entry).key == *key {
                             return FindResult { slot, entry };
                         }
                     }
+                    Tag::Empty => return FindResult::just_slot(slot),
                     Tag::Deleted => {}
                 }
-
                 slot = (slot + 1) % self.cap;
             }
         }
@@ -710,7 +708,7 @@ where
         let hash = Self::make_hash(&key);
 
         let result = self.find(hash, &key);
-        
+
         if result.entry_exists() {
             let entry = unsafe { self.entries.load_mut(result.entry) };
             let old_val = mem::replace(&mut entry.value, value);
@@ -942,7 +940,7 @@ where
         let hash = Self::make_hash(key);
 
         let result = self.find(hash, key);
-        
+
         if result.entry_exists() {
             let index = result.entry;
 
@@ -1769,7 +1767,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         // index must be deallocated here and entries shall be deallocated by the iterator.
         unsafe {
             manual_self.index.deallocate(iterator.cap);
-            iterator.entries = manual_self.entries.invalidate();
+            iterator.entries = manual_self.entries.duplicate();
         }
 
         iterator
