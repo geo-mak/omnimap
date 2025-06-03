@@ -776,25 +776,6 @@ impl<T> UnsafeBufferPointer<T> {
     }
 }
 
-/// `UnsafeBufferPointer` can't meaningfully implement `Drop` trait, as it doesn't store any
-/// metadata about the allocated memory space.
-///
-/// This implementation is a debug-mode check to ensure that the allocated memory space is
-/// deallocated before dropping the `UnsafeBufferPointer`.
-#[cfg(debug_assertions)]
-impl<T> Drop for UnsafeBufferPointer<T> {
-    fn drop(&mut self) {
-        // The `drop` method is called automatically when the thread is panicking.
-        // If the thread is panicking, this check is skipped to avoid double panic.
-        if !std::thread::panicking() {
-            assert!(
-                self.ptr.is_null(),
-                "Pointer must be deallocated before dropping"
-            );
-        }
-    }
-}
-
 #[cfg(test)]
 mod ptr_tests {
     use super::*;
@@ -1390,19 +1371,5 @@ mod ptr_tests {
             source.deallocate(layout);
             target.deallocate(layout);
         }
-    }
-
-    #[test]
-    #[cfg(debug_assertions)]
-    #[should_panic(expected = "Pointer must be deallocated before dropping")]
-    #[cfg_attr(miri, ignore)]
-    fn test_buffer_ptr_drop() {
-        let mut source: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
-        unsafe {
-            let layout = source.make_layout_unchecked(1);
-            let _ = source.allocate(layout, OnError::NoReturn);
-        }
-
-        // Dropping the pointer without deallocating the memory space should panic.
     }
 }
