@@ -84,7 +84,7 @@ pub type EntriesIterator<'a, K, V> = Map<Iter<'a, Entry<K, V>>, fn(&Entry<K, V>)
 ///
 /// The keys are immutable, only the values can be modified.
 pub type EntriesIteratorMut<'a, K, V> =
-Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> (&K, &mut V)>;
+    Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> (&K, &mut V)>;
 
 /// A key-value data structure with hash-based indexing and ordered storage of entries, providing
 /// fast insertion, deletion, and retrieval of entries.
@@ -708,7 +708,7 @@ where
         let hash = Self::make_hash(&key);
 
         let result = self.find(hash, &key);
-        
+
         if result.entry_exists() {
             let entry = unsafe { self.entries.load_mut(result.entry) };
             let old_val = mem::replace(&mut entry.value, value);
@@ -940,7 +940,7 @@ where
         let hash = Self::make_hash(key);
 
         let result = self.find(hash, key);
-        
+
         if result.entry_exists() {
             let index = result.entry;
 
@@ -1767,7 +1767,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         // index must be deallocated here and entries shall be deallocated by the iterator.
         unsafe {
             manual_self.index.deallocate(iterator.cap);
-            iterator.entries = manual_self.entries.invalidate();
+            iterator.entries = manual_self.entries.duplicate();
         }
 
         iterator

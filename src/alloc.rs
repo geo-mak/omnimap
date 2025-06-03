@@ -146,7 +146,7 @@ impl<T> UnsafeBufferPointer<T> {
         self.ptr.is_null()
     }
 
-    /// Sets the pointer to `null` and returns the current pointer.
+    /// Returns an instance with copy of the base pointer.
     ///
     /// # Safety
     ///
@@ -154,14 +154,12 @@ impl<T> UnsafeBufferPointer<T> {
     /// allocated memory space.
     ///
     #[must_use]
-    #[inline]
-    pub(crate) const unsafe fn invalidate(&mut self) -> UnsafeBufferPointer<T> {
-        let instance = UnsafeBufferPointer {
+    #[inline(always)]
+    pub(crate) const unsafe fn duplicate(&mut self) -> UnsafeBufferPointer<T> {
+        UnsafeBufferPointer {
             ptr: self.ptr,
             _marker: PhantomData,
-        };
-        self.ptr = ptr::null();
-        instance
+        }
     }
 
     /// Creates a new layout for the specified `count` of type `T`.
@@ -223,19 +221,19 @@ impl<T> UnsafeBufferPointer<T> {
     /// Note that the process may be terminated even if the allocation was successful, because
     /// detecting memory allocation failures at the process-level is platform-specific.
     ///
-    /// For instance, on some systems like linux, overcommit is allowed by default, which means 
-    /// that the kernel will map virtual memory to the process regardless of the backing memory, 
-    /// only to invoke the so-called _OOM killer_ later, and the process may become a target for 
+    /// For instance, on some systems like linux, overcommit is allowed by default, which means
+    /// that the kernel will map virtual memory to the process regardless of the backing memory,
+    /// only to invoke the so-called _OOM killer_ later, and the process may become a target for
     /// termination.
     ///
-    /// For better safety, consult the platform-specific documentation regarding out-of-memory 
+    /// For better safety, consult the platform-specific documentation regarding out-of-memory
     /// (OOM) behavior.
     ///
     /// # Safety
     ///
     /// - Pointer must be `null` before calling this method.
     ///   This method doesn't deallocate the allocated memory space pointed to by this pointer.
-    ///   Calling this method with a non-null pointer causes memory leaks, as access to the 
+    ///   Calling this method with a non-null pointer causes memory leaks, as access to the
     ///   allocated memory space will be lost without freeing it.
     ///
     /// - `align` must be a power of 2.
