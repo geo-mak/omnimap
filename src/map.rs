@@ -160,10 +160,8 @@ where
                 Err(_) => unreachable_unchecked(),
             };
 
-            let mut instance = Self::new();
-
-            match instance.allocate::<true>(cap, OnError::NoReturn) {
-                Ok(_) => instance,
+            match OmniMap::new_allocate::<true>(cap, OnError::NoReturn) {
+                Ok(instance) => instance,
                 Err(_) => unreachable_unchecked(),
             }
         }
@@ -279,48 +277,43 @@ where
         }
     }
 
-    /// Allocates the specified `cap`.
+    /// Creates a new allocated instance according the to the specified capacity `cap`.
     ///
-    /// On error, the map's state will not be affected, therefore this method shall be the only
-    /// one used to allocate new instances, because it guards against partial allocations and
-    /// invalid states when allocation fails.
+    /// If `INIT` is true, the index will initialize its control bytes, otherwise the control bytes
+    /// will remain uninitialized.
     ///
-    /// if `INIT` is:
-    /// - `true`: this method will initialize the control tags of the index after allocation.
-    /// - `false`: the control tags of the allocated index will remain uninitialized.
-    ///
-    /// On total success, fields entries, index and `cap` are set according the new state.
-    ///
+    /// Error handling depends on the error handling context `on_err`.
+    /// 
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
-    ///
-    /// # Safety
-    ///
-    /// This method should be called **only** when the map is not allocated.
-    fn allocate<const INIT: bool>(
-        &mut self,
+    fn new_allocate<const INIT: bool>(
         cap: usize,
         on_err: OnError,
-    ) -> Result<(), AllocError> {
+    ) -> Result<OmniMap<K, V>, AllocError> {
         unsafe {
-            let layout = self.entries.make_layout(cap, on_err)?;
+            let mut entries: UnsafeBufferPointer<Entry<K, V>> = UnsafeBufferPointer::new();
+            
+            let layout = entries.make_layout(cap, on_err)?;
 
             let mut index = MapIndex::new_allocate_uninit(cap, on_err)?;
 
             let dealloc_guard = defer!(cap, index.deallocate(*cap));
 
-            self.entries.allocate(layout, on_err)?;
+            entries.allocate(layout, on_err)?;
 
             dealloc_guard.deactivate();
 
-            self.index = index;
-            self.cap = cap;
-
             if INIT {
-                self.index.set_tags_empty(cap);
+                index.set_tags_empty(cap);
             }
 
-            Ok(())
+            Ok(OmniMap {
+                index,
+                entries,
+                cap,
+                len: 0,
+                deleted: 0
+            })
         }
     }
 
@@ -508,16 +501,17 @@ where
             self.reindex();
         } else {
             // Reallocation.
-            let result = if likely(self.cap != 0) {
+            if likely(self.cap != 0) {
                 let new_cap = self.capacity_next_power_of_two();
-                self.reallocate_reindex(new_cap, OnError::NoReturn)
+                match self.reallocate_reindex(new_cap, OnError::NoReturn) {
+                    Ok(_) => (),
+                    Err(_) => unsafe { unreachable_unchecked() },
+                }
             } else {
-                self.allocate::<true>(4, OnError::NoReturn)
-            };
-            // Hints the compiler that the error branch can be eliminated from the call chain.
-            match result {
-                Ok(_) => (),
-                Err(_) => unsafe { unreachable_unchecked() },
+               match OmniMap::new_allocate::<true>(4, OnError::NoReturn) {
+                    Ok(ref mut instance) => mem::swap(self, instance),
+                    Err(_) => unsafe { unreachable_unchecked() }
+               }
             }
         }
     }
@@ -534,7 +528,11 @@ where
                     None => Err(on_err.overflow()),
                 }
             } else {
-                self.allocate::<true>(extra_cap, on_err)
+                match OmniMap::new_allocate::<true>(extra_cap, on_err) {
+                // Update the locations of the pointers/refs.
+                Ok(ref mut instance) => Ok(mem::swap(self, instance)),
+                Err(e) => Err(e)
+               }
             }
         } else {
             Ok(())
@@ -632,7 +630,7 @@ where
     /// If the key already exists, the returned `slot` is the index of its slot and `entry`
     /// is the index of its entry.
     ///
-    /// If the key doesn't exist, the retuned `slot` is free for inserting and the value
+    /// If the key doesn't exist, the returned `slot` is free for inserting and the value
     /// of `entry` is an **invalid** index.
     ///
     /// # Safety
@@ -1573,10 +1571,8 @@ where
             self.cap
         };
 
-        let mut instance = Self::new();
-
-        match instance.allocate::<COMPACT>(cap, OnError::NoReturn) {
-            Ok(_) => {
+        match OmniMap::new_allocate::<COMPACT>(cap, OnError::NoReturn) {
+            Ok(mut instance) => {
                 debug_assert!(instance.cap == cap);
                 unsafe {
                     // Unwind-safe. On panic, cloned items will be dropped.
