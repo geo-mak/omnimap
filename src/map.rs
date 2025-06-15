@@ -396,6 +396,7 @@ where
     ///
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
+    #[inline(always)]
     fn new_allocate<const INIT: bool>(
         cap: usize,
         on_err: OnError,
@@ -1333,13 +1334,16 @@ where
             return;
         }
 
+        // On panic, this will leak memory to avoid double-free when the destructor of the map runs,
+        // which in its turn will cause another panic.
+        let protected_clear = OnDrop::set(self, |current| {
+            unsafe { current.data.index.set_tags_empty(current.data.cap) };
+            current.data.len = 0;
+            current.data.deleted = 0;
+        });
         unsafe {
-            self.data.entries.drop_initialized(self.data.len);
-            self.data.index.set_tags_empty(self.data.cap);
+            protected_clear.arg.data.drop_initialized();
         }
-
-        self.data.len = 0;
-        self.data.deleted = 0;
     }
 
     /// Returns an iterator over the current entries.
