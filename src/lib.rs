@@ -1,5 +1,3 @@
-extern crate core;
-
 mod alloc;
 mod map;
 #[cfg(test)]

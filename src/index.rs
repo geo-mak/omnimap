@@ -71,12 +71,6 @@ impl MapIndex {
         None
     }
 
-    /// Checks if the index's pointer is null.
-    #[inline(always)]
-    pub(crate) const fn not_allocated(&self) -> bool {
-        self.pointer.is_null()
-    }
-
     /// Creates new unallocated index.
     #[inline(always)]
     pub(crate) const fn new_unallocated() -> Self {
@@ -237,8 +231,9 @@ impl MapIndex {
 
 #[cfg(test)]
 mod index_tests {
+    use crate::opt::OnDrop;
+
     use super::*;
-    use crate::defer;
 
     #[test]
     fn test_index_layout() {
@@ -380,7 +375,7 @@ mod index_tests {
             assert!(!instance.pointer.is_null());
 
             {
-                let _ = defer!(cap, instance.deallocate(*cap));
+                let _ = OnDrop::set(cap, |cap| instance.deallocate(*cap));
                 // Out of scope, dropped.
             }
 
@@ -397,8 +392,8 @@ mod index_tests {
             assert!(!instance.pointer.is_null());
 
             {
-                let guard = defer!(cap, instance.deallocate(*cap));
-                guard.deactivate();
+                let guard = OnDrop::set(cap, |cap| instance.deallocate(*cap));
+                guard.finish();
                 // Out of scope.
             }
 

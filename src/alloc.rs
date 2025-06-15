@@ -3,9 +3,9 @@ use core::marker::PhantomData;
 use core::ops::Range;
 use core::ptr;
 
-use crate::defer;
 use crate::error::{AllocError, OnError};
 use crate::opt::branch_prediction::likely;
+use crate::opt::OnDrop;
 use std::alloc::{self, alloc};
 
 /// Debug-mode check for the valid alignment.
@@ -78,21 +78,6 @@ const fn debug_assert_allocated<T>(instance: &UnsafeBufferPointer<T>) {
 #[cfg(debug_assertions)]
 const fn debug_assert_not_allocated<T>(instance: &UnsafeBufferPointer<T>) {
     assert!(instance.ptr.is_null(), "Pointer must be null");
-}
-
-/// Debug-mode check for the count.
-/// This function is only available in debug builds.
-///
-/// Conditions:
-///
-/// - `copy_count` must be less than or equal to `allocated_count`.
-///
-#[cfg(debug_assertions)]
-const fn debug_assert_copy_inbounds(allocated_count: usize, copy_count: usize) {
-    assert!(
-        copy_count <= allocated_count,
-        "Copy count must be less than or equal to allocated count"
-    );
 }
 
 /// `UnsafeBufferPointer` represents an indirect reference to _one or more_ values of type `T`
@@ -296,76 +281,6 @@ impl<T> UnsafeBufferPointer<T> {
         self.ptr = ptr::null();
     }
 
-    /// Shrinks or grows the allocated memory space according the to the specified `new_layout`,
-    /// and copies `copy_count` elements of type `T` to the new memory space.
-    ///
-    /// Deallocating the old layout will be done only after the successful allocation of the new
-    /// layout.
-    ///
-    /// Handling of allocation errors is done according to the error handling context `on_err`.
-    ///
-    /// # Safety
-    ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
-    ///
-    /// - `allocated` layout must be the same as the previously allocated layout of type `T`.
-    ///   If the layout is not the same, the result is `undefined behavior`.
-    ///
-    /// - Initialized elements will not be dropped when shrinking the memory space.
-    ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not
-    ///   dropped properly before calling this method.
-    ///
-    /// - `align` must be a power of 2.
-    ///
-    /// - `size` must be greater than `0`.
-    ///
-    /// - `size` in bytes, when rounded up to the nearest multiple of `align`, must be less than
-    ///   or equal to `isize::MAX` bytes.
-    ///
-    /// - `copy_count` must be within the bounds of the allocated memory space.
-    ///   Copying more elements than the allocated count will cause termination with `SIGSEGV`.
-    ///
-    /// These invariants are checked in debug mode only.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())`: If the allocation was successful.
-    /// `Err(AllocError)`: If the allocation was unsuccessful.
-    pub(crate) unsafe fn reallocate(
-        &mut self,
-        allocated: Layout,
-        new: Layout,
-        copy_count: usize,
-        on_err: OnError,
-    ) -> Result<(), AllocError> {
-        #[cfg(debug_assertions)]
-        debug_assert_allocated(self);
-
-        #[cfg(debug_assertions)]
-        debug_layout_size_align(new.size(), new.align());
-
-        #[cfg(debug_assertions)]
-        debug_layout_size_align(allocated.size(), allocated.align());
-
-        #[cfg(debug_assertions)]
-        debug_assert_copy_inbounds(allocated.size() / Self::T_SIZE, copy_count);
-
-        let new_ptr = alloc(new) as *mut T;
-
-        if likely(!new_ptr.is_null()) {
-            ptr::copy_nonoverlapping(self.ptr, new_ptr, copy_count);
-
-            alloc::dealloc(self.ptr as *mut u8, allocated);
-
-            self.ptr = new_ptr;
-
-            return Ok(());
-        };
-
-        Err(on_err.alloc_err(new))
-    }
-
     /// Returns the base pointer.
     #[must_use]
     #[inline(always)]
@@ -374,6 +289,16 @@ impl<T> UnsafeBufferPointer<T> {
         debug_assert_allocated(self);
 
         self.ptr
+    }
+
+    /// Returns the base pointer as mutable pointer.
+    #[must_use]
+    #[inline(always)]
+    pub(crate) const unsafe fn access_mut(&self) -> *mut T {
+        #[cfg(debug_assertions)]
+        debug_assert_allocated(self);
+
+        self.ptr as *mut T
     }
 
     /// Returns the base pointer as a pointer of type `C`.
@@ -760,7 +685,8 @@ impl<T> UnsafeBufferPointer<T> {
         // The borrow checker will not allow mutable borrowing after defer.
         let self_ptr = self.ptr as *mut T;
 
-        let mut drop_guard = defer!(0, cloned, self.drop_initialized(*cloned));
+        let cloned = 0;
+        let mut drop_guard = OnDrop::set(cloned, |cloned| self.drop_initialized(*cloned));
 
         for i in 0..clone_count {
             let src = source.add(i);
@@ -769,8 +695,8 @@ impl<T> UnsafeBufferPointer<T> {
             drop_guard.arg += 1; // <- Update.
         }
 
-        // All cloned successfully, deactivate.
-        drop_guard.deactivate();
+        // Cloned successfully (If any).
+        drop_guard.finish();
     }
 }
 
@@ -916,47 +842,6 @@ mod ptr_tests {
             buffer_ptr.deallocate(layout);
 
             assert!(buffer_ptr.is_null());
-        }
-    }
-
-    #[test]
-    fn test_buffer_ptr_reallocate() {
-        unsafe {
-            let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
-            let layout = buffer_ptr.make_layout_unchecked(3);
-            let _ = buffer_ptr.allocate(layout, OnError::NoReturn);
-
-            *(buffer_ptr.ptr as *mut u8) = 1;
-            *(buffer_ptr.ptr as *mut u8).add(1) = 2;
-            *(buffer_ptr.ptr as *mut u8).add(2) = 3;
-
-            let new_layout = buffer_ptr.make_layout(5, OnError::NoReturn).unwrap();
-
-            // Grows the count to 5.
-            let result = buffer_ptr.reallocate(layout, new_layout, 3, OnError::NoReturn);
-            assert!(result.is_ok());
-
-            // Read values after reallocation.
-            for i in 0..3 {
-                assert_eq!(*buffer_ptr.ptr.add(i), i as u8 + 1);
-            }
-
-            buffer_ptr.deallocate(new_layout);
-        }
-    }
-
-    #[test]
-    #[cfg(debug_assertions)]
-    #[should_panic(expected = "Pointer must not be null")]
-    fn test_buffer_ptr_reallocate_null_ptr() {
-        let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
-
-        // Not yet allocated, should panic.
-        unsafe {
-            let allocated_layout = buffer_ptr.make_layout(5, OnError::NoReturn).unwrap();
-            let new_layout = buffer_ptr.make_layout(10, OnError::NoReturn).unwrap();
-
-            let _ = buffer_ptr.reallocate(allocated_layout, new_layout, 5, OnError::NoReturn);
         }
     }
 
