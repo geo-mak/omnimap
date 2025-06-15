@@ -1225,6 +1225,21 @@ where
         }
     }
 
+    /// Shrinks or deallocates the map depending on its length.
+    /// Extra reserves will be added to `base_cap` according to the current load factor.
+    #[inline]
+    fn shrink_or_deallocate(&mut self, base_cap: usize) {
+        if likely(self.data.len > 0) {
+            let new_cap = Self::allocation_capacity_unchecked(base_cap);
+            match self.reallocate_reindex(new_cap, OnError::NoReturn) {
+                Ok(_) => (),
+                Err(_) => unsafe { unreachable_unchecked() },
+            }
+        } else {
+            self.deallocate();
+        }
+    }
+
     /// Shrinks the capacity of the `OmniMap` to the specified capacity.
     /// In order to take effect, `capacity` must be less than the current capacity
     /// and greater than or equal to the number of elements in the map.
@@ -1254,16 +1269,7 @@ where
     #[inline]
     pub fn shrink_to(&mut self, capacity: usize) {
         if likely(capacity >= self.data.len && capacity < self.capacity()) {
-            if likely(self.data.len > 0) {
-                // Shrink and keep reserves.
-                let new_cap = Self::allocation_capacity_unchecked(capacity);
-                match self.reallocate_reindex(new_cap, OnError::NoReturn) {
-                    Ok(_) => (),
-                    Err(_) => unsafe { unreachable_unchecked() },
-                }
-            } else {
-                self.deallocate();
-            }
+            self.shrink_or_deallocate(capacity);
         }
     }
 
@@ -1295,16 +1301,7 @@ where
     #[inline]
     pub fn shrink_to_fit(&mut self) {
         if likely(self.capacity() > self.data.len) {
-            if likely(self.data.len > 0) {
-                // Shrink and keep reserves.
-                let new_cap = Self::allocation_capacity_unchecked(self.data.len);
-                match self.reallocate_reindex(new_cap, OnError::NoReturn) {
-                    Ok(_) => (),
-                    Err(_) => unsafe { unreachable_unchecked() },
-                }
-            } else {
-                self.deallocate();
-            }
+            self.shrink_or_deallocate(self.data.len);
         }
     }
 
