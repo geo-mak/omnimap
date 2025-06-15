@@ -270,8 +270,8 @@ where
                 Err(_) => unreachable_unchecked(),
             };
 
-            match OmniMap::new_allocate::<true>(cap, OnError::NoReturn) {
-                Ok(instance) => instance,
+            match MapData::new_allocate::<true>(cap, OnError::NoReturn) {
+                Ok(data) => OmniMap { data },
                 Err(_) => unreachable_unchecked(),
             }
         }
@@ -396,13 +396,23 @@ where
     ///
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
+    ///
+    /// # Safety
+    ///
+    /// This method should be called **only** when the map is still unallocated.
     #[inline(always)]
-    fn new_allocate<const INIT: bool>(
+    fn allocate<const INIT: bool>(
+        &mut self,
         cap: usize,
         on_err: OnError,
-    ) -> Result<OmniMap<K, V>, AllocError> {
-        let data = MapData::new_allocate::<INIT>(cap, on_err)?;
-        Ok(OmniMap { data })
+    ) -> Result<(), AllocError> {
+        debug_assert_eq!(self.data.cap, 0);
+        // Deallocation guard is not required, because self.data is supposed to be unallocated.
+        // When swap finishes, data will simply be discarded.
+        let mut data = MapData::new_allocate::<INIT>(cap, on_err)?;
+        // State transition.
+        mem::swap(&mut self.data, &mut data);
+        Ok(())
     }
 
     /// Shrinks or grows the allocated memory space to the specified `new_cap`.
@@ -410,6 +420,10 @@ where
     /// This method will also reset the index and rebuild it according to the new capacity.
     ///
     /// On error, the map's state will not be affected.
+    ///
+    /// # Safety
+    ///
+    /// This method should be called only when the map is already allocated.
     fn reallocate_reindex(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
         unsafe {
             let new_data = MapData::<K, V>::new_allocate::<true>(new_cap, on_err)?;
@@ -419,7 +433,7 @@ where
             });
 
             core::ptr::copy_nonoverlapping(
-                self.data.entries.access(),
+                self.data.entries.access(), // <- Non-null check inside.
                 protected_data.arg.entries.access_mut(),
                 self.data.len,
             );
@@ -551,9 +565,8 @@ where
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
             } else {
-                match OmniMap::new_allocate::<true>(4, OnError::NoReturn) {
-                    // State transition.
-                    Ok(ref mut instance) => mem::swap(self, instance),
+                match self.allocate::<true>(4, OnError::NoReturn) {
+                    Ok(_) => (),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
             }
@@ -572,12 +585,8 @@ where
                     None => Err(on_err.overflow()),
                 }
             } else {
-                match OmniMap::new_allocate::<true>(extra_cap, on_err) {
-                    // State transition.
-                    Ok(ref mut instance) => {
-                        mem::swap(self, instance);
-                        Ok(())
-                    }
+                match self.allocate::<true>(extra_cap, on_err) {
+                    Ok(_) => Ok(()),
                     Err(e) => Err(e),
                 }
             }
@@ -1619,8 +1628,9 @@ where
             self.data.cap
         };
 
-        match OmniMap::new_allocate::<COMPACT>(cap, OnError::NoReturn) {
-            Ok(mut instance) => {
+        match MapData::new_allocate::<COMPACT>(cap, OnError::NoReturn) {
+            Ok(data) => {
+                let mut instance = OmniMap { data };
                 debug_assert!(instance.data.cap == cap);
                 unsafe {
                     // Unwind-safe. On panic, cloned items will be dropped.
@@ -1634,6 +1644,7 @@ where
                         instance.data.build_index();
                     } else {
                         instance.data.deleted = self.data.deleted;
+
                         instance
                             .data
                             .index
