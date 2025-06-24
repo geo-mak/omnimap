@@ -776,11 +776,11 @@ where
             );
 
             self.data
-                .index
-                .store(result.slot, Tag::Occupied, self.data.len);
-            self.data
                 .entries
                 .store(self.data.len, Entry::new(key, value, hash));
+            self.data
+                .index
+                .store(result.slot, Tag::Occupied, self.data.len);
         }
 
         self.data.len += 1;
@@ -1006,8 +1006,8 @@ where
             self.data.deleted += 1;
 
             unsafe {
-                let removed = self.data.entries.read_for_ownership(index).value;
                 self.data.index.store_tag(result.slot, Tag::Deleted);
+                let removed = self.data.entries.read_for_ownership(index).value;
 
                 if likely(index != self.data.len) {
                     if SHIFT {
@@ -1173,8 +1173,8 @@ where
         self.data.deleted += 1;
 
         unsafe {
-            let removed = self.data.entries.read_for_ownership(0);
             self.data.index.store_tag(result.slot, Tag::Deleted);
+            let removed = self.data.entries.read_for_ownership(0);
 
             // Call order matters.
             self.decrement_index(0, self.data.len);
@@ -1228,8 +1228,8 @@ where
         self.data.deleted += 1;
 
         unsafe {
-            let removed = self.data.entries.read_for_ownership(self.data.len);
             self.data.index.store_tag(result.slot, Tag::Deleted);
+            let removed = self.data.entries.read_for_ownership(self.data.len);
 
             Some((removed.key, removed.value))
         }
@@ -1350,6 +1350,7 @@ where
             current.data.len = 0;
             current.data.deleted = 0;
         });
+        
         unsafe {
             protected_clear.arg.data.drop_initialized();
         }
