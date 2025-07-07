@@ -83,7 +83,7 @@ const fn debug_assert_not_allocated<T>(instance: &UnsafeBufferPointer<T>) {
 /// `UnsafeBufferPointer` represents an indirect reference to _one or more_ values of type `T`
 /// consecutively in memory.
 ///
-/// `UnsafeBufferPointer` guarantees proper `size` and `alignment` of `T`, when storing or loading
+/// `UnsafeBufferPointer` guarantees proper `size` and `alignment` of `T`, when storing or accessing
 /// values, but it doesn't guarantee safe operations with measures such as null pointer checks or
 /// bounds checking.
 ///
@@ -284,7 +284,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// Returns the base pointer.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn access(&self) -> *const T {
+    pub(crate) const unsafe fn ptr(&self) -> *const T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -294,7 +294,7 @@ impl<T> UnsafeBufferPointer<T> {
     /// Returns the base pointer as mutable pointer.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn access_mut(&self) -> *mut T {
+    pub(crate) const unsafe fn ptr_mut(&self) -> *mut T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -392,14 +392,14 @@ impl<T> UnsafeBufferPointer<T> {
         ptr::write((self.ptr as *mut T).add(at), value);
     }
 
-    /// Returns a reference to an initialized element at the specified offset `at`.
+    /// Returns a reference to an element at the specified offset `at`.
     ///
     /// # Safety
     ///
     /// - Pointer must be allocated before calling this method.
     ///   Calling this method with a null pointer will cause termination with `SIGSEGV`.
     ///
-    /// - The value of type `T` at the offset `at` must be initialized. Loading an uninitialized
+    /// - The value of type `T` at the offset `at` must be initialized. Accessing an uninitialized
     ///   element as `T` is `undefined behavior`.
     ///
     /// # Time Complexity
@@ -407,21 +407,21 @@ impl<T> UnsafeBufferPointer<T> {
     /// _O_(1).
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn load(&self, at: usize) -> &T {
+    pub(crate) const unsafe fn access(&self, at: usize) -> &T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
         &*self.ptr.add(at)
     }
 
-    /// Returns a mutable reference to an initialized element at the specified offset `at`.
+    /// Returns a mutable reference to an element at the specified offset `at`.
     ///
     /// # Safety
     ///
     /// - Pointer must be allocated before calling this method.
     ///   Calling this method with a null pointer will cause termination with `SIGSEGV`.
     ///
-    /// - The value of type `T` at the offset `at` must be initialized. Loading an uninitialized
+    /// - The value of type `T` at the offset `at` must be initialized. Accessing an uninitialized
     ///   element as `T` is `undefined behavior`.
     ///
     /// # Time Complexity
@@ -430,14 +430,14 @@ impl<T> UnsafeBufferPointer<T> {
     ///
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn load_mut(&mut self, at: usize) -> &mut T {
+    pub(crate) const unsafe fn access_mut(&mut self, at: usize) -> &mut T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
         &mut *(self.ptr as *mut T).add(at)
     }
 
-    /// Returns a reference to the first initialized element.
+    /// Returns a reference to the first element.
     ///
     /// # Safety
     ///
@@ -451,7 +451,7 @@ impl<T> UnsafeBufferPointer<T> {
     ///
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn load_first(&self) -> &T {
+    pub(crate) const unsafe fn access_first(&self) -> &T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -642,7 +642,7 @@ impl<T> UnsafeBufferPointer<T> {
     ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
     ///
     /// - `count` must be within the bounds of the initialized elements.
-    ///   Loading an uninitialized elements as `T` is `undefined behavior`.
+    ///   Accessing an uninitialized elements as `T` is `undefined behavior`.
     ///
     /// # Time Complexity
     ///
@@ -857,13 +857,13 @@ mod ptr_tests {
             }
 
             for i in 0..3 {
-                assert_ne!(*buffer_ptr.load(i), 0);
+                assert_ne!(*buffer_ptr.access(i), 0);
             }
 
             buffer_ptr.memset_zero(3);
 
             for i in 0..3 {
-                assert_eq!(*buffer_ptr.load(i), 0);
+                assert_eq!(*buffer_ptr.access(i), 0);
             }
 
             buffer_ptr.deallocate(layout);
@@ -871,7 +871,7 @@ mod ptr_tests {
     }
 
     #[test]
-    fn test_buffer_ptr_store_load() {
+    fn test_buffer_ptr_store_access() {
         unsafe {
             let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
             let layout = buffer_ptr.make_layout_unchecked(3);
@@ -882,16 +882,16 @@ mod ptr_tests {
                 buffer_ptr.store(i, i as u8 + 1);
             }
 
-            assert_eq!(*buffer_ptr.load(0), 1);
-            assert_eq!(*buffer_ptr.load(1), 2);
-            assert_eq!(*buffer_ptr.load(2), 3);
+            assert_eq!(*buffer_ptr.access(0), 1);
+            assert_eq!(*buffer_ptr.access(1), 2);
+            assert_eq!(*buffer_ptr.access(2), 3);
 
             buffer_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_buffer_ptr_load_mut() {
+    fn test_buffer_ptr_access_mut() {
         unsafe {
             let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
             let layout = buffer_ptr.make_layout_unchecked(3);
@@ -902,17 +902,17 @@ mod ptr_tests {
             buffer_ptr.store(1, 2);
 
             // Mutate the value.
-            *buffer_ptr.load_mut(0) = 10;
+            *buffer_ptr.access_mut(0) = 10;
 
             // Value should be updated.
-            assert_eq!(*buffer_ptr.load(0), 10);
+            assert_eq!(*buffer_ptr.access(0), 10);
 
             buffer_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_buffer_ptr_load_first() {
+    fn test_buffer_ptr_access_first() {
         unsafe {
             let mut buffer_ptr: UnsafeBufferPointer<u8> = UnsafeBufferPointer::new();
             let layout = buffer_ptr.make_layout_unchecked(3);
@@ -921,7 +921,7 @@ mod ptr_tests {
             buffer_ptr.store(0, 1);
             buffer_ptr.store(1, 2);
 
-            assert_eq!(buffer_ptr.load_first(), &1);
+            assert_eq!(buffer_ptr.access_first(), &1);
 
             buffer_ptr.deallocate(layout);
         }
@@ -939,7 +939,7 @@ mod ptr_tests {
 
             assert_eq!(buffer_ptr.read_for_ownership(0), 1);
 
-            assert_eq!(*buffer_ptr.load(1), 2);
+            assert_eq!(*buffer_ptr.access(1), 2);
 
             buffer_ptr.deallocate(layout);
         }
@@ -958,11 +958,11 @@ mod ptr_tests {
 
             buffer_ptr.shift_left(2, 2);
 
-            assert_eq!(*buffer_ptr.load(0), 1);
-            assert_eq!(*buffer_ptr.load(1), 2);
-            assert_eq!(*buffer_ptr.load(2), 4);
-            assert_eq!(*buffer_ptr.load(3), 5);
-            assert_eq!(*buffer_ptr.load(4), 5);
+            assert_eq!(*buffer_ptr.access(0), 1);
+            assert_eq!(*buffer_ptr.access(1), 2);
+            assert_eq!(*buffer_ptr.access(2), 4);
+            assert_eq!(*buffer_ptr.access(3), 5);
+            assert_eq!(*buffer_ptr.access(4), 5);
 
             buffer_ptr.deallocate(layout);
         }
@@ -981,9 +981,9 @@ mod ptr_tests {
 
             buffer_ptr.memmove_one(0, 2);
 
-            assert_eq!(*buffer_ptr.load(0), 10);
-            assert_eq!(*buffer_ptr.load(1), 20);
-            assert_eq!(*buffer_ptr.load(2), 10); // Value at index 2 is overwritten.
+            assert_eq!(*buffer_ptr.access(0), 10);
+            assert_eq!(*buffer_ptr.access(1), 20);
+            assert_eq!(*buffer_ptr.access(2), 10); // Value at index 2 is overwritten.
 
             buffer_ptr.deallocate(layout);
         }
@@ -1183,7 +1183,7 @@ mod ptr_tests {
             target.clone_from(source.ptr, 3);
 
             for i in 0..3 {
-                assert_eq!(*source.load(i), *target.load(i));
+                assert_eq!(*source.access(i), *target.access(i));
             }
 
             source.deallocate(layout);

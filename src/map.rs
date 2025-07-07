@@ -180,7 +180,7 @@ impl<K, V> MapData<K, V> {
         let mut i = 0;
         unsafe {
             while i < self.len {
-                let entry = self.entries.load(i);
+                let entry = self.entries.access(i);
                 let mut slot = entry.hash % self.cap;
 
                 'probing: loop {
@@ -433,8 +433,8 @@ where
             });
 
             core::ptr::copy_nonoverlapping(
-                self.data.entries.access(), // <- Non-null check inside.
-                protected_data.arg.entries.access_mut(),
+                self.data.entries.ptr(), // <- Non-null check inside.
+                protected_data.arg.entries.ptr_mut(),
                 self.data.len,
             );
 
@@ -494,7 +494,7 @@ where
         let mut i = after + 1;
         unsafe {
             while i <= inc_end {
-                let hash = self.data.entries.load(i).hash;
+                let hash = self.data.entries.access(i).hash;
                 let mut slot = hash % self.data.cap;
 
                 'probing: loop {
@@ -700,7 +700,7 @@ where
                 match self.data.index.read_tag(slot) {
                     Tag::Occupied => {
                         let entry = self.data.index.read_entry_index(slot);
-                        if self.data.entries.load(entry).key == *key {
+                        if self.data.entries.access(entry).key == *key {
                             return FindResult { slot, entry };
                         }
                     }
@@ -764,7 +764,7 @@ where
         let result = self.find(hash, &key);
 
         if result.entry_exists() {
-            let entry = unsafe { self.data.entries.load_mut(result.entry) };
+            let entry = unsafe { self.data.entries.access_mut(result.entry) };
             let old_val = mem::replace(&mut entry.value, value);
             return Some(old_val);
         };
@@ -827,7 +827,7 @@ where
         let result = self.find(hash, key);
 
         if result.entry_exists() {
-            let value = unsafe { &self.data.entries.load(result.entry).value };
+            let value = unsafe { &self.data.entries.access(result.entry).value };
             return Some(value);
         }
 
@@ -876,7 +876,7 @@ where
         let result = self.find(hash, key);
 
         if result.entry_exists() {
-            let value = unsafe { &mut self.data.entries.load_mut(result.entry).value };
+            let value = unsafe { &mut self.data.entries.access_mut(result.entry).value };
             return Some(value);
         }
 
@@ -914,7 +914,7 @@ where
             return None;
         }
 
-        let entry = unsafe { self.data.entries.load_first() };
+        let entry = unsafe { self.data.entries.access_first() };
 
         Some((&entry.key, &entry.value))
     }
@@ -950,7 +950,7 @@ where
             return None;
         }
 
-        let entry = unsafe { self.data.entries.load(self.data.len - 1) };
+        let entry = unsafe { self.data.entries.access(self.data.len - 1) };
 
         Some((&entry.key, &entry.value))
     }
@@ -1015,7 +1015,7 @@ where
                         self.decrement_index(index, self.data.len);
                         self.data.entries.shift_left(index, self.data.len - index);
                     } else {
-                        let last = self.data.entries.load(self.data.len);
+                        let last = self.data.entries.access(self.data.len);
                         let swapped = self.find(last.hash, &last.key);
                         self.data.index.store_entry_index(swapped.slot, index);
                         self.data.entries.memmove_one(self.data.len, index);
@@ -1160,7 +1160,7 @@ where
         }
 
         // SAFETY: The map is not empty, so an entry must exist.
-        let entry_ref = unsafe { self.data.entries.load_first() };
+        let entry_ref = unsafe { self.data.entries.access_first() };
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
 
@@ -1215,7 +1215,7 @@ where
             return None;
         }
 
-        let entry_ref = unsafe { self.data.entries.load(self.data.len - 1) };
+        let entry_ref = unsafe { self.data.entries.access(self.data.len - 1) };
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
 
@@ -1350,7 +1350,7 @@ where
             current.data.len = 0;
             current.data.deleted = 0;
         });
-        
+
         unsafe {
             protected_clear.arg.data.drop_initialized();
         }
@@ -1540,7 +1540,7 @@ impl<K, V> Index<usize> for OmniMap<K, V> {
     /// ```
     fn index(&self, index: usize) -> &V {
         assert!(index < self.data.len, "Index out of bounds.");
-        unsafe { &self.data.entries.load(index).value }
+        unsafe { &self.data.entries.access(index).value }
     }
 }
 
@@ -1569,7 +1569,7 @@ impl<K, V> IndexMut<usize> for OmniMap<K, V> {
     /// ```
     fn index_mut(&mut self, index: usize) -> &mut V {
         assert!(index < self.data.len, "Index out of bounds.");
-        unsafe { &mut self.data.entries.load_mut(index).value }
+        unsafe { &mut self.data.entries.access_mut(index).value }
     }
 }
 
@@ -1638,7 +1638,7 @@ where
                     instance
                         .data
                         .entries
-                        .clone_from(self.data.entries.access(), self.data.len);
+                        .clone_from(self.data.entries.ptr(), self.data.len);
                     instance.data.len = self.data.len;
                     if COMPACT {
                         instance.data.deleted = 0;

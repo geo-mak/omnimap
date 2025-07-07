@@ -112,8 +112,8 @@ impl MapIndex {
         // Copy the useful data without the padding bytes.
         let unaligned_size = slots_size + cap;
 
-        let source_start = source.pointer.access().sub(slots_size);
-        let self_start = self.pointer.access().sub(slots_size);
+        let source_start = source.pointer.ptr().sub(slots_size);
+        let self_start = self.pointer.ptr().sub(slots_size);
 
         core::ptr::copy_nonoverlapping(source_start, self_start as *mut u8, unaligned_size)
     }
