@@ -9,7 +9,7 @@ use core::{fmt, mem};
 
 use std::collections::hash_map::DefaultHasher;
 
-use crate::alloc::UnsafeBufferPointer;
+use crate::alloc::MemorySpace;
 use crate::error::{AllocError, OnError};
 use crate::index::{MapIndex, Tag};
 use crate::opt::branch_prediction::{likely, unlikely};
@@ -89,7 +89,7 @@ pub type EntriesIteratorMut<'a, K, V> =
 /// Stores the fields of the map and allocates/deallocates its pointers.
 /// It does't implement `Drop`. Deallocation is manual.
 struct MapData<K, V> {
-    entries: UnsafeBufferPointer<Entry<K, V>>,
+    entries: MemorySpace<Entry<K, V>>,
     index: MapIndex,
     cap: usize,
     len: usize,
@@ -101,7 +101,7 @@ impl<K, V> MapData<K, V> {
     const fn new() -> Self {
         Self {
             // Unallocated pointers.
-            entries: UnsafeBufferPointer::new(),
+            entries: MemorySpace::new(),
             index: MapIndex::new_unallocated(),
             cap: 0,
             len: 0,
@@ -123,7 +123,7 @@ impl<K, V> MapData<K, V> {
         on_err: OnError,
     ) -> Result<MapData<K, V>, AllocError> {
         unsafe {
-            let mut entries: UnsafeBufferPointer<Entry<K, V>> = UnsafeBufferPointer::new();
+            let mut entries: MemorySpace<Entry<K, V>> = MemorySpace::new();
 
             let layout = entries.make_layout(cap, on_err)?;
 
@@ -1722,7 +1722,7 @@ where
 
 /// An owning iterator over the entries of the map.
 pub struct OmniMapIterator<K, V> {
-    entries: UnsafeBufferPointer<Entry<K, V>>,
+    entries: MemorySpace<Entry<K, V>>,
     cap: usize,
     offset: usize,
     end: usize,
@@ -1810,7 +1810,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
     /// ```
     fn into_iter(self) -> Self::IntoIter {
         let mut iterator = OmniMapIterator {
-            entries: UnsafeBufferPointer::new(),
+            entries: MemorySpace::new(),
             cap: 0,
             end: 0,
             offset: 0,
