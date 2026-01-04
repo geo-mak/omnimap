@@ -1,3 +1,4 @@
+use core::borrow::Borrow;
 use core::fmt::{Debug, Display};
 use core::hash::{Hash, Hasher};
 use core::hint::unreachable_unchecked;
@@ -14,6 +15,21 @@ use crate::error::{AllocError, OnError};
 use crate::index::{MapIndex, Tag};
 use crate::opt::OnDrop;
 use crate::opt::branch_prediction::{likely, unlikely};
+
+pub trait EqKey<K> {
+    fn eq_key(&self, key: &K) -> bool;
+}
+
+impl<B, K> EqKey<K> for B
+where
+    K: Borrow<B>,
+    B: Eq,
+{
+    #[inline(always)]
+    fn eq_key(&self, key: &K) -> bool {
+        self == key.borrow()
+    }
+}
 
 struct FindResult {
     slot: usize,
@@ -359,16 +375,6 @@ where
         self.data.len == 0
     }
 
-    /// Calculates the hash value for a key.
-    ///
-    /// > Note: The hash method of the `key` may panic.
-    #[inline]
-    fn make_hash(key: &K) -> usize {
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        hasher.finish() as usize
-    }
-
     /// Returns the value that maintains the load factor for a given capacity `given`.
     ///
     /// This method doesn't check for arithmetic overflow.
@@ -691,6 +697,19 @@ where
         self.reserve_additional(additional, OnError::ReturnErr)
     }
 
+    /// Calculates the hash value for a key.
+    ///
+    /// > Note: The hash method of the `key` may panic.
+    #[inline]
+    fn make_hash<B>(key: &B) -> usize
+    where
+        B: Hash,
+    {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        hasher.finish() as usize
+    }
+
     /// Finds the slot of the key in the index.
     ///
     /// If the key already exists, the returned `slot` is the index of its slot and `entry`
@@ -703,7 +722,10 @@ where
     ///
     /// Before using `entry`, its value must be checked first with `entry_exists()` method,
     /// because its value can be an invalid index.
-    fn find(&self, hash: usize, key: &K) -> FindResult {
+    fn find<B>(&self, hash: usize, key: &B) -> FindResult
+    where
+        B: EqKey<K>,
+    {
         unsafe {
             // TODO: Maintaining power-of-two capacity when shrinking is the better option, even if more memory is reserved.
             let mut slot = hash % self.data.cap;
@@ -711,7 +733,7 @@ where
                 match self.data.index.read_tag(slot) {
                     Tag::Occupied => {
                         let entry = self.data.index.read_entry_index(slot);
-                        if self.data.entries.access(entry).key == *key {
+                        if key.eq_key(&self.data.entries.access(entry).key) {
                             return FindResult { slot, entry };
                         }
                     }
@@ -828,7 +850,11 @@ where
     /// ```
     #[must_use]
     #[inline]
-    pub fn get(&self, key: &K) -> Option<&V> {
+    pub fn get<B>(&self, key: &B) -> Option<&V>
+    where
+        K: Borrow<B>,
+        B: Hash + Eq,
+    {
         if self.is_empty() {
             return None;
         }
@@ -877,7 +903,11 @@ where
     /// ```
     #[must_use]
     #[inline]
-    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+    pub fn get_mut<B>(&mut self, key: &B) -> Option<&mut V>
+    where
+        K: Borrow<B>,
+        B: Hash + Eq,
+    {
         if self.is_empty() {
             return None;
         }
