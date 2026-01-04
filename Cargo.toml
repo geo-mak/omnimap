@@ -3,6 +3,7 @@ name = "omnimap"
 version = "0.1.0"
 edition = "2021"
 license-file = "LICENSE"
+repository = "https://github.com/geo-mak/omnimap"
 
 [dev-dependencies]
 criterion = "0.6.0"
