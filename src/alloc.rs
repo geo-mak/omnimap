@@ -101,7 +101,7 @@ const fn debug_assert_not_allocated<T>(instance: &MemorySpace<T>) {
 ///
 /// Using custom allocators will be supported in the future.
 pub(crate) struct MemorySpace<T> {
-    ptr: *const T,
+    ptr: *mut T,
     _marker: PhantomData<T>,
 }
 
@@ -118,7 +118,7 @@ impl<T> MemorySpace<T> {
     #[inline]
     pub(crate) const fn new() -> Self {
         MemorySpace {
-            ptr: ptr::null(),
+            ptr: ptr::null_mut(),
             _marker: PhantomData,
         }
     }
@@ -280,7 +280,7 @@ impl<T> MemorySpace<T> {
 
         unsafe { alloc::dealloc(self.ptr as *mut u8, layout) };
 
-        self.ptr = ptr::null();
+        self.ptr = ptr::null_mut();
     }
 
     /// Returns the base pointer.
@@ -300,7 +300,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        self.ptr as *mut T
+        self.ptr
     }
 
     /// Returns the base pointer as a pointer of type `C`.
@@ -366,7 +366,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::write_bytes(self.ptr as *mut T, 0, count) };
+        unsafe { ptr::write_bytes(self.ptr, 0, count) };
     }
 
     /// Stores a value at the specified offset `at`.
@@ -391,7 +391,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::write((self.ptr as *mut T).add(at), value) };
+        unsafe { ptr::write((self.ptr).add(at), value) };
     }
 
     /// Returns a reference to an element at the specified offset `at`.
@@ -436,7 +436,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { &mut *(self.ptr as *mut T).add(at) }
+        unsafe { &mut *(self.ptr).add(at) }
     }
 
     /// Returns a reference to the first element.
@@ -483,7 +483,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::read((self.ptr as *mut T).add(at)) }
+        unsafe { ptr::read((self.ptr).add(at)) }
     }
 
     /// Shifts the `count` values after `at` to the left, overwriting the value at `at`.
@@ -504,7 +504,7 @@ impl<T> MemorySpace<T> {
         debug_assert_allocated(self);
 
         unsafe {
-            let dst = (self.ptr as *mut T).add(at);
+            let dst = (self.ptr).add(at);
             let src = dst.add(1);
             ptr::copy(src, dst, count);
         }
@@ -535,8 +535,8 @@ impl<T> MemorySpace<T> {
         debug_assert_allocated(self);
 
         unsafe {
-            let src = (self.ptr as *mut T).add(from);
-            let dst = (self.ptr as *mut T).add(to);
+            let src = (self.ptr).add(from);
+            let dst = (self.ptr).add(to);
             ptr::copy(src, dst, 1);
         }
     }
@@ -569,7 +569,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count)) };
+        unsafe { ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.ptr, count)) };
     }
 
     /// Calls `drop` on the initialized elements in the specified range.
@@ -605,7 +605,7 @@ impl<T> MemorySpace<T> {
 
         unsafe {
             ptr::drop_in_place(ptr::slice_from_raw_parts_mut(
-                self.ptr.add(range.start) as *mut T,
+                self.ptr.add(range.start),
                 range.end - range.start,
             ))
         };
@@ -658,7 +658,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { &mut *ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count) }
+        unsafe { &mut *ptr::slice_from_raw_parts_mut(self.ptr, count) }
     }
 
     /// Clones values of type `T` from the memory space pointed to by the source pointer `source`.
@@ -687,7 +687,7 @@ impl<T> MemorySpace<T> {
         debug_assert_allocated(self);
         debug_assert!(!source.is_null());
 
-        let self_ptr = self.ptr as *mut T;
+        let self_ptr = self.ptr;
 
         let cloned = 0;
 
