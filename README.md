@@ -6,7 +6,7 @@ A key-value data structure with characteristics of both hash maps and vectors.
 Originally designed as a lightweight, indexed key-value store for high-performance parsers and compilers.
 
 ## Features
-- Relatively simple and compact implementation that mostly relay on `core` intrinsics.
+- Relatively simple and compact implementation that relies mostly on `core` intrinsics.
 - Maintains the order in which items are inserted.
 - Order preservation of items during all operations including: insertion, updating and **removing**.
 - Optimized for fast access.
