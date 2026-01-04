@@ -389,11 +389,11 @@ where
     /// This method checks for arithmetic overflow.
     #[inline(always)]
     const fn allocation_capacity(given: usize, on_err: OnError) -> Result<usize, AllocError> {
-        if let Some(plus_one) = given.checked_add(1) {
-            if let Some(mul_eight) = plus_one.checked_mul(8) {
-                // Can't overflow.
-                return Ok(mul_eight / 7);
-            }
+        if let Some(plus_one) = given.checked_add(1)
+            && let Some(mul_eight) = plus_one.checked_mul(8)
+        {
+            // Can't overflow.
+            return Ok(mul_eight / 7);
         }
         Err(on_err.overflow())
     }
