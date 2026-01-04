@@ -3,7 +3,7 @@
 
 A key-value data structure with characteristics of both hash maps and vectors.
 
-Originally intended as a lightweight indexed key-value store for high-performance parsers.
+Originally designed as a lightweight, indexed key-value store for high-performance parsers and compilers.
 
 ## Features
 - Relatively simple and compact implementation that mostly relay on `core` intrinsics.
