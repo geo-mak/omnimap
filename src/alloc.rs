@@ -754,7 +754,7 @@ mod ptr_tests {
     fn test_mem_space_make_layout_ok() {
         let mem_space: MemorySpace<u8> = MemorySpace::new();
         unsafe {
-            let layout = mem_space.make_layout(3, OnError::NoReturn).unwrap();
+            let layout = mem_space.make_layout(3, OnError::Panic).unwrap();
             assert_eq!(layout.size(), 3);
             assert_eq!(layout.align(), MemorySpace::<u8>::T_ALIGN);
         }
@@ -766,7 +766,7 @@ mod ptr_tests {
     fn test_mem_space_make_layout_zero_size_panic() {
         let mem_space: MemorySpace<u8> = MemorySpace::new();
         unsafe {
-            let _ = mem_space.make_layout(0, OnError::NoReturn);
+            let _ = mem_space.make_layout(0, OnError::Panic);
         }
     }
 
@@ -775,7 +775,7 @@ mod ptr_tests {
     fn test_mem_space_make_layout_overflow_panic() {
         let mem_space: MemorySpace<u8> = MemorySpace::new();
         unsafe {
-            let _ = mem_space.make_layout(usize::MAX, OnError::NoReturn);
+            let _ = mem_space.make_layout(usize::MAX, OnError::Panic);
         }
     }
 
@@ -794,7 +794,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             // Memory space should have been allocated.
             assert!(!mem_space.is_null());
@@ -809,7 +809,7 @@ mod ptr_tests {
 
         unsafe {
             let layout = mem_space.make_layout_unchecked(3);
-            let result = mem_space.allocate(layout, OnError::NoReturn);
+            let result = mem_space.allocate(layout, OnError::Panic);
 
             assert!(result.is_ok());
             assert!(!mem_space.is_null());
@@ -827,12 +827,12 @@ mod ptr_tests {
         unsafe {
             let layout = mem_space.make_layout_unchecked(1);
             // Not yet allocated, should not panic.
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             assert!(!mem_space.is_null());
 
             // Already allocated, should panic.
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
         }
     }
 
@@ -843,7 +843,7 @@ mod ptr_tests {
 
             let layout = mem_space.make_layout_unchecked(3);
 
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             assert!(!mem_space.is_null());
 
@@ -858,7 +858,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             for i in 0..3 {
                 mem_space.store(i, i as u8 + 1);
@@ -883,7 +883,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             // Store some values.
             for i in 0..3 {
@@ -903,7 +903,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             // Store some values.
             mem_space.store(0, 1);
@@ -924,7 +924,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             mem_space.store(0, 1);
             mem_space.store(1, 2);
@@ -940,7 +940,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             mem_space.store(0, 1);
             mem_space.store(1, 2);
@@ -958,7 +958,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(5);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             for i in 0..5 {
                 mem_space.store(i, i as u8 + 1);
@@ -981,7 +981,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             mem_space.store(0, 10);
             mem_space.store(1, 20);
@@ -1011,7 +1011,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             let slice = mem_space.as_slice(0);
             assert_eq!(slice, &[]);
@@ -1026,7 +1026,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             // Store some values.
             for i in 0..3 {
@@ -1055,7 +1055,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             let slice = mem_space.as_slice_mut(0);
             assert_eq!(slice, &[]);
@@ -1070,7 +1070,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             // Store some values.
             for i in 0..3 {
@@ -1104,7 +1104,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<DropCounter> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             // Reference 5 elements to the same drop counter.
             for i in 0..3 {
@@ -1138,7 +1138,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<u8> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(5);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
             mem_space.drop_range(0..0);
         }
     }
@@ -1152,7 +1152,7 @@ mod ptr_tests {
         unsafe {
             let mut mem_space: MemorySpace<DropCounter> = MemorySpace::new();
             let layout = mem_space.make_layout_unchecked(5);
-            let _ = mem_space.allocate(layout, OnError::NoReturn);
+            let _ = mem_space.allocate(layout, OnError::Panic);
 
             // Reference 5 elements to the same drop counter.
             for i in 0..5 {
@@ -1179,14 +1179,14 @@ mod ptr_tests {
         unsafe {
             let mut source: MemorySpace<u8> = MemorySpace::new();
             let layout = source.make_layout_unchecked(3);
-            let _ = source.allocate(layout, OnError::NoReturn);
+            let _ = source.allocate(layout, OnError::Panic);
 
             for i in 0..3 {
                 source.store(i, i as u8 + 1);
             }
 
             let mut target: MemorySpace<u8> = MemorySpace::new();
-            let _ = target.allocate(layout, OnError::NoReturn);
+            let _ = target.allocate(layout, OnError::Panic);
 
             target.clone_from(source.ptr, 3);
 
@@ -1231,8 +1231,8 @@ mod ptr_tests {
         let mut target: MemorySpace<PanicOnClone> = MemorySpace::new();
         unsafe {
             let layout = source.make_layout_unchecked(10);
-            let _ = source.allocate(layout, OnError::NoReturn);
-            let _ = target.allocate(layout, OnError::NoReturn);
+            let _ = source.allocate(layout, OnError::Panic);
+            let _ = target.allocate(layout, OnError::Panic);
 
             let drop_counter = Rc::new(RefCell::new(0));
             for i in 0..10 {

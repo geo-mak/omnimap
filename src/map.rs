@@ -297,12 +297,12 @@ where
         }
 
         unsafe {
-            let cap = match Self::allocation_capacity(capacity, OnError::NoReturn) {
+            let cap = match Self::allocation_capacity(capacity, OnError::Panic) {
                 Ok(cap) => cap,
                 Err(_) => unreachable_unchecked(),
             };
 
-            match MapCore::new_allocate::<true>(cap, OnError::NoReturn) {
+            match MapCore::new_allocate::<true>(cap, OnError::Panic) {
                 Ok(data) => OmniMap { data },
                 Err(_) => unreachable_unchecked(),
             }
@@ -403,7 +403,7 @@ where
     /// This method panics when overflow occurs.
     #[inline(always)]
     const fn capacity_next_power_of_two(&self) -> usize {
-        match Self::allocation_capacity(self.data.cap, OnError::NoReturn) {
+        match Self::allocation_capacity(self.data.cap, OnError::Panic) {
             Ok(alloc_cap) => alloc_cap.next_power_of_two(),
             Err(_) => unsafe { unreachable_unchecked() },
         }
@@ -576,12 +576,12 @@ where
             // Reallocation.
             if likely(self.data.cap != 0) {
                 let new_cap = self.capacity_next_power_of_two();
-                match self.reallocate_reindex(new_cap, OnError::NoReturn) {
+                match self.reallocate_reindex(new_cap, OnError::Panic) {
                     Ok(_) => (),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
             } else {
-                match self.allocate::<true>(4, OnError::NoReturn) {
+                match self.allocate::<true>(4, OnError::Panic) {
                     Ok(_) => (),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
@@ -644,7 +644,7 @@ where
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        match self.reserve_additional(additional, OnError::NoReturn) {
+        match self.reserve_additional(additional, OnError::Panic) {
             Ok(_) => (),
             // Hints the compiler that the error branch can be eliminated from the call chain.
             Err(_) => unsafe { unreachable_unchecked() },
@@ -1298,7 +1298,7 @@ where
     fn shrink_or_deallocate(&mut self, base_cap: usize) {
         if likely(self.data.len > 0) {
             let new_cap = Self::allocation_capacity_unchecked(base_cap);
-            match self.reallocate_reindex(new_cap, OnError::NoReturn) {
+            match self.reallocate_reindex(new_cap, OnError::Panic) {
                 Ok(_) => (),
                 Err(_) => unsafe { unreachable_unchecked() },
             }
@@ -1630,7 +1630,7 @@ where
             self.data.cap
         };
 
-        match MapCore::new_allocate::<COMPACT>(cap, OnError::NoReturn) {
+        match MapCore::new_allocate::<COMPACT>(cap, OnError::Panic) {
             Ok(data) => {
                 let mut instance = OmniMap { data };
 

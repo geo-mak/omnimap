@@ -7,36 +7,27 @@ pub enum AllocError {
     AllocatorErr,
 }
 
-impl AllocError {
-    /// Panics with capacity overflow message.
-    pub(crate) const fn panic_overflow() -> ! {
-        panic!("Allocation Error: capacity overflow")
-    }
-}
-
 #[derive(Clone, Copy)]
 pub(crate) enum OnError {
-    NoReturn,
+    Panic,
     ReturnErr,
 }
 
 impl OnError {
     /// Handles `Overflow` error according to the current variant.
-    #[must_use]
     #[inline]
     pub(crate) const fn overflow(&self) -> AllocError {
         match self {
-            OnError::NoReturn => AllocError::panic_overflow(),
+            OnError::Panic => panic!("Allocation Error: capacity overflow"),
             OnError::ReturnErr => AllocError::Overflow,
         }
     }
 
     /// Handles `AllocatorErr` according to the current variant.
-    #[must_use]
     #[inline]
     pub(crate) fn alloc_err(&self, layout: Layout) -> AllocError {
         match self {
-            OnError::NoReturn => handle_alloc_error(layout),
+            OnError::Panic => handle_alloc_error(layout),
             OnError::ReturnErr => AllocError::AllocatorErr,
         }
     }

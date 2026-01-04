@@ -264,7 +264,7 @@ mod index_tests {
     #[test]
     fn test_index_new_allocate_uninitialized() {
         unsafe {
-            let mut instance = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
             assert!(!instance.memory.is_null());
 
@@ -283,7 +283,7 @@ mod index_tests {
     #[test]
     fn test_index_store_read_tags() {
         unsafe {
-            let mut instance = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
             instance.set_tags_empty(10);
 
@@ -306,7 +306,7 @@ mod index_tests {
     #[test]
     fn test_index_store_read_entry_index() {
         unsafe {
-            let mut instance = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
             instance.set_tags_empty(10);
 
@@ -325,7 +325,7 @@ mod index_tests {
     #[test]
     fn test_index_initialize_from() {
         unsafe {
-            let mut source = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut source = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
             source.set_tags_empty(10);
 
@@ -337,7 +337,7 @@ mod index_tests {
                 source.store_entry_index(i, 11)
             }
 
-            let mut target = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut target = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
             target.copy_from(&source, 10);
 
@@ -357,7 +357,7 @@ mod index_tests {
     #[test]
     fn test_index_reset_control_tags() {
         unsafe {
-            let mut instance = MapIndex::new_allocate_uninit(10, OnError::NoReturn).unwrap();
+            let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
             instance.set_tags_empty(10);
 
@@ -379,7 +379,7 @@ mod index_tests {
     fn test_index_scope_guard() {
         unsafe {
             let cap = 10;
-            let mut instance = MapIndex::new_allocate_uninit(cap, OnError::NoReturn).unwrap();
+            let mut instance = MapIndex::new_allocate_uninit(cap, OnError::Panic).unwrap();
             assert!(!instance.memory.is_null());
 
             {
@@ -396,7 +396,7 @@ mod index_tests {
     fn test_index_scope_guard_deactivate() {
         unsafe {
             let cap = 10;
-            let mut instance = MapIndex::new_allocate_uninit(cap, OnError::NoReturn).unwrap();
+            let mut instance = MapIndex::new_allocate_uninit(cap, OnError::Panic).unwrap();
             assert!(!instance.memory.is_null());
 
             {
