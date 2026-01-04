@@ -1723,6 +1723,18 @@ pub struct OmniMapIterator<K, V> {
     end: usize,
 }
 
+impl<K, V> OmniMapIterator<K, V> {
+    #[inline]
+    const fn new() -> Self {
+        Self {
+            entries: MemorySpace::new(),
+            cap: 0,
+            end: 0,
+            offset: 0,
+        }
+    }
+}
+
 impl<K, V> Iterator for OmniMapIterator<K, V> {
     type Item = (K, V);
 
@@ -1804,19 +1816,16 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
     /// assert_eq!(iter.next(), None);
     /// ```
     fn into_iter(self) -> Self::IntoIter {
-        let mut iterator = OmniMapIterator {
-            entries: MemorySpace::new(),
-            cap: 0,
-            end: 0,
-            offset: 0,
-        };
-
         if self.data.len == 0 {
-            return iterator;
+            return OmniMapIterator::new();
         }
 
-        iterator.cap = self.data.cap;
-        iterator.end = self.data.len;
+        let mut iterator = OmniMapIterator {
+            entries: MemorySpace::new(),
+            cap: self.data.cap,
+            end: self.data.len,
+            offset: 0,
+        };
 
         let mut manual_self = ManuallyDrop::new(self);
 
