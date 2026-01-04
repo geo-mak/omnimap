@@ -33,7 +33,6 @@ impl Tag {
 
 /// A helper type to manage index's memory.
 pub(crate) struct MapIndex {
-    // Figure 1:
     // -----------------------------------------------------------------------------------
     // |                        The memory layout of the index                           |
     // | |------------ usize * N ------------|---------- u8 * N ------------|- u8 * X -| |

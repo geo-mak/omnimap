@@ -216,6 +216,20 @@ pub struct OmniMap<K, V> {
     data: MapCore<K, V>,
 }
 
+impl<K, V> Drop for OmniMap<K, V> {
+    fn drop(&mut self) {
+        if self.data.cap == 0 {
+            return;
+        }
+
+        unsafe {
+            // This call is safe even if the length is zero.
+            self.data.drop_initialized();
+            self.data.deallocate();
+        }
+    }
+}
+
 // Core implementation
 impl<K, V> OmniMap<K, V>
 where
@@ -1471,20 +1485,6 @@ where
     }
 }
 
-impl<K, V> Drop for OmniMap<K, V> {
-    fn drop(&mut self) {
-        if self.data.cap == 0 {
-            return;
-        }
-
-        unsafe {
-            // This call is safe even if the length is zero.
-            self.data.drop_initialized();
-            self.data.deallocate();
-        }
-    }
-}
-
 impl<K, V> Default for OmniMap<K, V>
 where
     K: Eq + Hash,
@@ -1568,46 +1568,6 @@ impl<K, V> IndexMut<usize> for OmniMap<K, V> {
     }
 }
 
-impl<'a, K, V> IntoIterator for &'a OmniMap<K, V>
-where
-    K: Eq + Hash,
-{
-    type Item = (&'a K, &'a V);
-    type IntoIter = EntriesIterator<'a, K, V>;
-
-    /// Returns an iterator over the entries.
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl<'a, K, V> IntoIterator for &'a mut OmniMap<K, V>
-where
-    K: Eq + Hash,
-{
-    type Item = (&'a K, &'a mut V);
-    type IntoIter = EntriesIteratorMut<'a, K, V>;
-
-    /// Returns a mutable iterator over the entries.
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter_mut()
-    }
-}
-
-impl<K, V> PartialEq for OmniMap<K, V>
-where
-    K: Eq + Hash,
-    V: PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        if self.data.len != other.len() {
-            return false;
-        }
-        self.iter()
-            .all(|(key, value)| other.get(key).is_some_and(|v| *value == *v))
-    }
-}
-
 impl<K, V> OmniMap<K, V>
 where
     K: Eq + Hash + Clone,
@@ -1627,7 +1587,9 @@ where
         match MapCore::new_allocate::<COMPACT>(cap, OnError::NoReturn) {
             Ok(data) => {
                 let mut instance = OmniMap { data };
+
                 debug_assert!(instance.data.cap == cap);
+
                 unsafe {
                     // Unwind-safe. On panic, cloned items will be dropped.
                     instance
@@ -1647,8 +1609,10 @@ where
                             .copy_from(&self.data.index, self.data.cap);
                     }
                 }
+
                 instance
             }
+
             // Must diverge, nothing to handle.
             Err(_) => unsafe { unreachable_unchecked() },
         }
@@ -1712,6 +1676,46 @@ where
             return Self::new();
         }
         self.make_clone::<false>()
+    }
+}
+
+impl<K, V> PartialEq for OmniMap<K, V>
+where
+    K: Eq + Hash,
+    V: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        if self.data.len != other.len() {
+            return false;
+        }
+        self.iter()
+            .all(|(key, value)| other.get(key).is_some_and(|v| *value == *v))
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a OmniMap<K, V>
+where
+    K: Eq + Hash,
+{
+    type Item = (&'a K, &'a V);
+    type IntoIter = EntriesIterator<'a, K, V>;
+
+    /// Returns an iterator over the entries.
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a mut OmniMap<K, V>
+where
+    K: Eq + Hash,
+{
+    type Item = (&'a K, &'a mut V);
+    type IntoIter = EntriesIteratorMut<'a, K, V>;
+
+    /// Returns a mutable iterator over the entries.
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 
