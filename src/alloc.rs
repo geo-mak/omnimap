@@ -687,10 +687,10 @@ impl<T> MemorySpace<T> {
         debug_assert_allocated(self);
         debug_assert!(!source.is_null());
 
-        // The borrow checker will not allow mutable borrowing after defer.
         let self_ptr = self.ptr as *mut T;
 
         let cloned = 0;
+
         let mut drop_guard =
             OnDrop::set(cloned, |cloned| unsafe { self.drop_initialized(*cloned) });
 

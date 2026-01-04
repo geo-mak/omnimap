@@ -73,7 +73,7 @@ impl MapIndex {
 
     /// Creates new unallocated index.
     #[inline(always)]
-    pub(crate) const fn new_unallocated() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             memory: MemorySpace::new(),
         }
@@ -258,7 +258,7 @@ mod index_tests {
 
     #[test]
     fn test_index_new() {
-        let instance = MapIndex::new_unallocated();
+        let instance = MapIndex::new();
         assert!(instance.memory.is_null());
     }
 

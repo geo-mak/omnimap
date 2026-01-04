@@ -88,7 +88,7 @@ pub type EntriesIteratorMut<'a, K, V> =
 
 /// Stores the fields of the map and allocates/deallocates its pointers.
 /// It does't implement `Drop`. Deallocation is manual.
-struct MapData<K, V> {
+struct MapCore<K, V> {
     entries: MemorySpace<Entry<K, V>>,
     index: MapIndex,
     cap: usize,
@@ -96,13 +96,13 @@ struct MapData<K, V> {
     deleted: usize,
 }
 
-impl<K, V> MapData<K, V> {
+impl<K, V> MapCore<K, V> {
     #[inline(always)]
     const fn new() -> Self {
         Self {
             // Unallocated pointers.
             entries: MemorySpace::new(),
-            index: MapIndex::new_unallocated(),
+            index: MapIndex::new(),
             cap: 0,
             len: 0,
             deleted: 0,
@@ -121,7 +121,7 @@ impl<K, V> MapData<K, V> {
     fn new_allocate<const INIT: bool>(
         cap: usize,
         on_err: OnError,
-    ) -> Result<MapData<K, V>, AllocError> {
+    ) -> Result<MapCore<K, V>, AllocError> {
         unsafe {
             let mut entries: MemorySpace<Entry<K, V>> = MemorySpace::new();
 
@@ -139,7 +139,7 @@ impl<K, V> MapData<K, V> {
                 index.set_tags_empty(cap);
             }
 
-            let instance = MapData {
+            let instance = MapCore {
                 index,
                 entries,
                 cap,
@@ -213,7 +213,7 @@ impl<K, V> MapData<K, V> {
 /// It offers intuitive and ergonomic APIs inspired by hash maps and vectors, with the added
 /// benefit of predictable iteration order and stable indices.
 pub struct OmniMap<K, V> {
-    data: MapData<K, V>,
+    data: MapCore<K, V>,
 }
 
 // Core implementation
@@ -239,7 +239,7 @@ where
     #[inline]
     pub const fn new() -> Self {
         OmniMap {
-            data: MapData::new(),
+            data: MapCore::new(),
         }
     }
 
@@ -272,7 +272,7 @@ where
                 Err(_) => unreachable_unchecked(),
             };
 
-            match MapData::new_allocate::<true>(cap, OnError::NoReturn) {
+            match MapCore::new_allocate::<true>(cap, OnError::NoReturn) {
                 Ok(data) => OmniMap { data },
                 Err(_) => unreachable_unchecked(),
             }
@@ -409,11 +409,9 @@ where
         on_err: OnError,
     ) -> Result<(), AllocError> {
         debug_assert_eq!(self.data.cap, 0);
-        // Deallocation guard is not required, because self.data is supposed to be unallocated.
-        // When swap finishes, data will simply be discarded.
-        let mut data = MapData::new_allocate::<INIT>(cap, on_err)?;
-        // State transition.
-        mem::swap(&mut self.data, &mut data);
+
+        self.data = MapCore::new_allocate::<INIT>(cap, on_err)?;
+
         Ok(())
     }
 
@@ -427,27 +425,24 @@ where
     ///
     /// This method should be called only when the map is already allocated.
     fn reallocate_reindex(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
+        let mut new_data = MapCore::<K, V>::new_allocate::<true>(new_cap, on_err)?;
+
         unsafe {
-            let new_data = MapData::<K, V>::new_allocate::<true>(new_cap, on_err)?;
-
-            let mut protected_data = OnDrop::set(new_data, |data| {
-                data.deallocate();
-            });
-
             core::ptr::copy_nonoverlapping(
-                self.data.entries.ptr(), // <- Non-null check inside.
-                protected_data.arg.entries.ptr_mut(),
+                self.data.entries.ptr(),
+                new_data.entries.ptr_mut(),
                 self.data.len,
-            );
+            )
+        };
 
-            protected_data.arg.len = self.data.len;
-            protected_data.arg.build_index();
+        new_data.len = self.data.len;
+        new_data.build_index();
 
-            // protected_data points now to previous `self` data.
-            // It will be deallocated when dropped without calling drop on entries.
-            mem::swap(&mut self.data, &mut protected_data.arg);
-            Ok(())
-        }
+        mem::swap(&mut self.data, &mut new_data);
+
+        unsafe { new_data.deallocate() }
+
+        Ok(())
     }
 
     /// Deallocates the entries and the index without calling `drop` on the initialized entries.
@@ -462,7 +457,6 @@ where
             self.data.deallocate();
         }
 
-        // Reset fields.
         self.data.cap = 0;
         self.data.len = 0;
         self.data.deleted = 0;
@@ -697,6 +691,7 @@ where
     /// because its value can be an invalid index.
     fn find(&self, hash: usize, key: &K) -> FindResult {
         unsafe {
+            // TODO: Maintaining power-of-two capacity when shrinking is the better option, even if more memory is reserved.
             let mut slot = hash % self.data.cap;
             loop {
                 match self.data.index.read_tag(slot) {
@@ -1345,8 +1340,6 @@ where
             return;
         }
 
-        // On panic, this will leak memory to avoid double-free when the destructor of the map runs,
-        // which in its turn will cause another panic.
         let protected_clear = OnDrop::set(self, |current| {
             unsafe { current.data.index.set_tags_empty(current.data.cap) };
             current.data.len = 0;
@@ -1483,7 +1476,7 @@ impl<K, V> Drop for OmniMap<K, V> {
         if self.data.cap == 0 {
             return;
         }
-        // (Cap > 0) -> entries and index are allocated.
+
         unsafe {
             // This call is safe even if the length is zero.
             self.data.drop_initialized();
@@ -1631,7 +1624,7 @@ where
             self.data.cap
         };
 
-        match MapData::new_allocate::<COMPACT>(cap, OnError::NoReturn) {
+        match MapCore::new_allocate::<COMPACT>(cap, OnError::NoReturn) {
             Ok(data) => {
                 let mut instance = OmniMap { data };
                 debug_assert!(instance.data.cap == cap);
