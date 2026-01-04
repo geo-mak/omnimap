@@ -3,10 +3,11 @@ use core::marker::PhantomData;
 use core::ops::Range;
 use core::ptr;
 
+use std::alloc::{self, alloc};
+
 use crate::error::{AllocError, OnError};
 use crate::opt::OnDrop;
 use crate::opt::branch_prediction::likely;
-use std::alloc::{self, alloc};
 
 /// Debug-mode check for the valid alignment.
 /// This function is only available in debug builds.
@@ -64,7 +65,7 @@ const fn debug_layout_size_align(size: usize, align: usize) {
 /// - The pointer must not be null.
 ///
 #[cfg(debug_assertions)]
-const fn debug_assert_allocated<T>(instance: &MemorySpace<T>) {
+const fn debug_assert_allocated<T>(instance: &AllocationPointer<T>) {
     assert!(!instance.ptr.is_null(), "Pointer must not be null");
 }
 
@@ -76,13 +77,14 @@ const fn debug_assert_allocated<T>(instance: &MemorySpace<T>) {
 /// - The pointer must be null.
 ///
 #[cfg(debug_assertions)]
-const fn debug_assert_not_allocated<T>(instance: &MemorySpace<T>) {
+const fn debug_assert_not_allocated<T>(instance: &AllocationPointer<T>) {
     assert!(instance.ptr.is_null(), "Pointer must be null");
 }
 
-/// `MemorySpace` represents an indirect reference to _one or more_ values of type `T` consecutively in memory.
+/// An indirect reference to _one or more_ values of type `T` consecutively in memory,
+/// with methods for managing the underlying memory directly.
 ///
-/// `MemorySpace` guarantees proper `size` and `alignment` of `T`, when storing or accessing
+/// It guarantees proper `size` and `alignment` of `T`, when storing or accessing
 /// values, but it doesn't guarantee safe operations with measures such as null pointer checks or
 /// bounds checking.
 ///
@@ -90,22 +92,20 @@ const fn debug_assert_not_allocated<T>(instance: &MemorySpace<T>) {
 /// the allocated memory and the number of initialized elements, therefore it doesn't offer
 /// automatic memory management.
 ///
-/// The user is responsible for allocating, reallocating, and deallocating memory.
-///
-/// If `T` is not of trivial type, the user is responsible for calling `drop` on the elements to
-/// release resources, before deallocating the memory space.
+/// If `T` is not of trivial type, `drop` must be called on the elements to release resources
+/// before deallocating the allocated memory.
 ///
 /// Limited checks for invariants are done in debug mode only.
 ///
-/// `MemorySpace` uses the registered `#[global_allocator]` to allocate memory.
+/// It uses the registered `#[global_allocator]` to allocate memory.
 ///
 /// Using custom allocators will be supported in the future.
-pub(crate) struct MemorySpace<T> {
+pub(crate) struct AllocationPointer<T> {
     ptr: *mut T,
     _marker: PhantomData<T>,
 }
 
-impl<T> MemorySpace<T> {
+impl<T> AllocationPointer<T> {
     pub(crate) const T_SIZE: usize = size_of::<T>();
     pub(crate) const T_ALIGN: usize = align_of::<T>();
     pub(crate) const T_MAX_ALLOC_SIZE: usize = (isize::MAX as usize + 1) - Self::T_ALIGN;
@@ -117,7 +117,7 @@ impl<T> MemorySpace<T> {
     #[must_use]
     #[inline]
     pub(crate) const fn new() -> Self {
-        MemorySpace {
+        AllocationPointer {
             ptr: ptr::null_mut(),
             _marker: PhantomData,
         }
@@ -139,8 +139,8 @@ impl<T> MemorySpace<T> {
     ///
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn duplicate(&mut self) -> MemorySpace<T> {
-        MemorySpace {
+    pub(crate) const unsafe fn duplicate(&mut self) -> AllocationPointer<T> {
+        AllocationPointer {
             ptr: self.ptr,
             _marker: PhantomData,
         }
@@ -306,7 +306,7 @@ impl<T> MemorySpace<T> {
     /// Returns the base pointer as a pointer of type `C`.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn ptr_as<C>(&self) -> *const C {
+    pub(crate) const unsafe fn base_as<C>(&self) -> *const C {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -316,7 +316,7 @@ impl<T> MemorySpace<T> {
     /// Returns the base pointer as a mutable pointer of type `C`.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn ptr_mut_as<C>(&mut self) -> *mut C {
+    pub(crate) const unsafe fn base_mut_as<C>(&mut self) -> *mut C {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -325,7 +325,7 @@ impl<T> MemorySpace<T> {
 
     /// Sets the base pointer at current offset plus `t_offset` of the strides of `T`.
     #[inline(always)]
-    pub(crate) const unsafe fn set_ptr_plus(&mut self, t_offset: usize) {
+    pub(crate) const unsafe fn set_plus(&mut self, t_offset: usize) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -334,7 +334,7 @@ impl<T> MemorySpace<T> {
 
     /// Sets the base pointer at current offset minus `t_offset` of the strides of `T`.
     #[inline(always)]
-    pub(crate) const unsafe fn set_ptr_minus(&mut self, t_offset: usize) {
+    pub(crate) const unsafe fn set_minus(&mut self, t_offset: usize) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -409,7 +409,7 @@ impl<T> MemorySpace<T> {
     /// _O_(1).
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn access(&self, at: usize) -> &T {
+    pub(crate) const unsafe fn reference(&self, at: usize) -> &T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -432,7 +432,7 @@ impl<T> MemorySpace<T> {
     ///
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn access_mut(&mut self, at: usize) -> &mut T {
+    pub(crate) const unsafe fn reference_mut(&mut self, at: usize) -> &mut T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -453,7 +453,7 @@ impl<T> MemorySpace<T> {
     ///
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn access_first(&self) -> &T {
+    pub(crate) const unsafe fn reference_first(&self) -> &T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -709,112 +709,111 @@ impl<T> MemorySpace<T> {
 }
 
 #[cfg(test)]
-mod ptr_tests {
+mod alloc_ptr_tests {
     use super::*;
     use std::cell::RefCell;
     use std::rc::Rc;
 
     #[test]
-    fn test_mem_space_new() {
-        let mem_space: MemorySpace<u8> = MemorySpace::new();
-        assert!(mem_space.is_null());
+    fn test_alloc_ptr_new() {
+        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        assert!(alloc_ptr.is_null());
     }
 
     #[test]
-    fn test_mem_space_make_layout_unchecked_ok() {
-        let mem_space: MemorySpace<u8> = MemorySpace::new();
+    fn test_alloc_ptr_make_layout_unchecked_ok() {
+        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
-            let layout = mem_space.make_layout_unchecked(3);
+            let layout = alloc_ptr.make_layout_unchecked(3);
             assert_eq!(layout.size(), 3);
-            assert_eq!(layout.align(), MemorySpace::<u8>::T_ALIGN);
+            assert_eq!(layout.align(), AllocationPointer::<u8>::T_ALIGN);
         }
     }
 
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Allocation size must be greater than 0")]
-    fn test_mem_space_make_layout_unchecked_zero_size() {
-        let mem_space: MemorySpace<u8> = MemorySpace::new();
+    fn test_alloc_ptr_make_layout_unchecked_zero_size() {
+        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
-            let _ = mem_space.make_layout_unchecked(0);
+            let _ = alloc_ptr.make_layout_unchecked(0);
         }
     }
 
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Allocation size exceeds maximum limit on this platform")]
-    fn test_mem_space_make_layout_unchecked_invalid_size() {
-        let mem_space: MemorySpace<u8> = MemorySpace::new();
+    fn test_alloc_ptr_make_layout_unchecked_invalid_size() {
+        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
-            let _ = mem_space.make_layout_unchecked(isize::MAX as usize);
+            let _ = alloc_ptr.make_layout_unchecked(isize::MAX as usize);
         }
     }
 
     #[test]
-    fn test_mem_space_make_layout_ok() {
-        let mem_space: MemorySpace<u8> = MemorySpace::new();
+    fn test_alloc_ptr_make_layout_ok() {
+        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
-            let layout = mem_space.make_layout(3, OnError::Panic).unwrap();
+            let layout = alloc_ptr.make_layout(3, OnError::Panic).unwrap();
             assert_eq!(layout.size(), 3);
-            assert_eq!(layout.align(), MemorySpace::<u8>::T_ALIGN);
+            assert_eq!(layout.align(), AllocationPointer::<u8>::T_ALIGN);
         }
     }
 
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Allocation size must be greater than 0")]
-    fn test_mem_space_make_layout_zero_size_panic() {
-        let mem_space: MemorySpace<u8> = MemorySpace::new();
+    fn test_alloc_ptr_make_layout_zero_size_panic() {
+        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
-            let _ = mem_space.make_layout(0, OnError::Panic);
+            let _ = alloc_ptr.make_layout(0, OnError::Panic);
         }
     }
 
     #[test]
     #[should_panic(expected = "Allocation Error: capacity overflow")]
-    fn test_mem_space_make_layout_overflow_panic() {
-        let mem_space: MemorySpace<u8> = MemorySpace::new();
+    fn test_alloc_ptr_make_layout_overflow_panic() {
+        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
-            let _ = mem_space.make_layout(usize::MAX, OnError::Panic);
+            let _ = alloc_ptr.make_layout(usize::MAX, OnError::Panic);
         }
     }
 
     #[test]
-    fn test_mem_space_make_layout_return_err() {
-        let mem_space: MemorySpace<u8> = MemorySpace::new();
+    fn test_alloc_ptr_make_layout_return_err() {
+        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
-            let result = mem_space.make_layout(usize::MAX, OnError::ReturnErr);
+            let result = alloc_ptr.make_layout(usize::MAX, OnError::ReturnErr);
             assert!(result.is_err());
             assert!(matches!(result, Err(AllocError::Overflow)));
         }
     }
 
     #[test]
-    fn test_mem_space_new_allocate() {
+    fn test_alloc_ptr_new_allocate() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            // Memory space should have been allocated.
-            assert!(!mem_space.is_null());
+            assert!(!alloc_ptr.is_null());
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_allocate() {
-        let mut mem_space: MemorySpace<u8> = MemorySpace::new();
+    fn test_alloc_ptr_allocate() {
+        let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
 
         unsafe {
-            let layout = mem_space.make_layout_unchecked(3);
-            let result = mem_space.allocate(layout, OnError::Panic);
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let result = alloc_ptr.allocate(layout, OnError::Panic);
 
             assert!(result.is_ok());
-            assert!(!mem_space.is_null());
+            assert!(!alloc_ptr.is_null());
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
@@ -822,266 +821,254 @@ mod ptr_tests {
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Pointer must be null")]
     #[cfg_attr(miri, ignore)]
-    fn test_mem_space_allocate_allocated() {
-        let mut mem_space: MemorySpace<u8> = MemorySpace::new();
+    fn test_alloc_ptr_allocate_allocated() {
+        let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
-            let layout = mem_space.make_layout_unchecked(1);
-            // Not yet allocated, should not panic.
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let layout = alloc_ptr.make_layout_unchecked(1);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            assert!(!mem_space.is_null());
+            assert!(!alloc_ptr.is_null());
 
-            // Already allocated, should panic.
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
         }
     }
 
     #[test]
-    fn test_mem_space_allocate_deallocate() {
+    fn test_alloc_ptr_allocate_deallocate() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
 
-            let layout = mem_space.make_layout_unchecked(3);
+            let layout = alloc_ptr.make_layout_unchecked(3);
 
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            assert!(!mem_space.is_null());
+            assert!(!alloc_ptr.is_null());
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
 
-            assert!(mem_space.is_null());
+            assert!(alloc_ptr.is_null());
         }
     }
 
     #[test]
-    fn test_mem_space_memset_zero() {
+    fn test_alloc_ptr_memset_zero() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
             for i in 0..3 {
-                mem_space.store(i, i as u8 + 1);
+                alloc_ptr.store(i, i as u8 + 1);
             }
 
             for i in 0..3 {
-                assert_ne!(*mem_space.access(i), 0);
+                assert_ne!(*alloc_ptr.reference(i), 0);
             }
 
-            mem_space.memset_zero(3);
+            alloc_ptr.memset_zero(3);
 
             for i in 0..3 {
-                assert_eq!(*mem_space.access(i), 0);
+                assert_eq!(*alloc_ptr.reference(i), 0);
             }
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_store_access() {
+    fn test_alloc_ptr_store_access() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            // Store some values.
             for i in 0..3 {
-                mem_space.store(i, i as u8 + 1);
+                alloc_ptr.store(i, i as u8 + 1);
             }
 
-            assert_eq!(*mem_space.access(0), 1);
-            assert_eq!(*mem_space.access(1), 2);
-            assert_eq!(*mem_space.access(2), 3);
+            assert_eq!(*alloc_ptr.reference(0), 1);
+            assert_eq!(*alloc_ptr.reference(1), 2);
+            assert_eq!(*alloc_ptr.reference(2), 3);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_access_mut() {
+    fn test_alloc_ptr_access_mut() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            // Store some values.
-            mem_space.store(0, 1);
-            mem_space.store(1, 2);
+            alloc_ptr.store(0, 1);
+            alloc_ptr.store(1, 2);
 
-            // Mutate the value.
-            *mem_space.access_mut(0) = 10;
+            *alloc_ptr.reference_mut(0) = 10;
 
-            // Value should be updated.
-            assert_eq!(*mem_space.access(0), 10);
+            assert_eq!(*alloc_ptr.reference(0), 10);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_access_first() {
+    fn test_alloc_ptr_access_first() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            mem_space.store(0, 1);
-            mem_space.store(1, 2);
+            alloc_ptr.store(0, 1);
+            alloc_ptr.store(1, 2);
 
-            assert_eq!(mem_space.access_first(), &1);
+            assert_eq!(alloc_ptr.reference_first(), &1);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_rfo() {
+    fn test_alloc_ptr_rfo() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            mem_space.store(0, 1);
-            mem_space.store(1, 2);
+            alloc_ptr.store(0, 1);
+            alloc_ptr.store(1, 2);
 
-            assert_eq!(mem_space.read_for_ownership(0), 1);
+            assert_eq!(alloc_ptr.read_for_ownership(0), 1);
 
-            assert_eq!(*mem_space.access(1), 2);
+            assert_eq!(*alloc_ptr.reference(1), 2);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_shift_left() {
+    fn test_alloc_ptr_shift_left() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(5);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(5);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
             for i in 0..5 {
-                mem_space.store(i, i as u8 + 1);
+                alloc_ptr.store(i, i as u8 + 1);
             }
 
-            mem_space.shift_left(2, 2);
+            alloc_ptr.shift_left(2, 2);
 
-            assert_eq!(*mem_space.access(0), 1);
-            assert_eq!(*mem_space.access(1), 2);
-            assert_eq!(*mem_space.access(2), 4);
-            assert_eq!(*mem_space.access(3), 5);
-            assert_eq!(*mem_space.access(4), 5);
+            assert_eq!(*alloc_ptr.reference(0), 1);
+            assert_eq!(*alloc_ptr.reference(1), 2);
+            assert_eq!(*alloc_ptr.reference(2), 4);
+            assert_eq!(*alloc_ptr.reference(3), 5);
+            assert_eq!(*alloc_ptr.reference(4), 5);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_move_one() {
+    fn test_alloc_ptr_move_one() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            mem_space.store(0, 10);
-            mem_space.store(1, 20);
-            mem_space.store(2, 30);
+            alloc_ptr.store(0, 10);
+            alloc_ptr.store(1, 20);
+            alloc_ptr.store(2, 30);
 
-            mem_space.memmove_one(0, 2);
+            alloc_ptr.memmove_one(0, 2);
 
-            assert_eq!(*mem_space.access(0), 10);
-            assert_eq!(*mem_space.access(1), 20);
-            assert_eq!(*mem_space.access(2), 10); // Value at index 2 is overwritten.
+            assert_eq!(*alloc_ptr.reference(0), 10);
+            assert_eq!(*alloc_ptr.reference(1), 20);
+            assert_eq!(*alloc_ptr.reference(2), 10);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Pointer must not be null")]
-    fn test_mem_space_as_slice_null_ptr() {
-        let mem_space: MemorySpace<u8> = MemorySpace::new();
-        let slice = unsafe { mem_space.as_slice(0) };
+    fn test_alloc_ptr_as_slice_null_ptr() {
+        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let slice = unsafe { alloc_ptr.as_slice(0) };
         assert_eq!(slice, &[]);
     }
 
     #[test]
-    fn test_mem_space_as_slice_empty() {
+    fn test_alloc_ptr_as_slice_empty() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            let slice = mem_space.as_slice(0);
+            let slice = alloc_ptr.as_slice(0);
             assert_eq!(slice, &[]);
 
-            // Deallocate memory space or the destructor will panic.
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_as_slice() {
+    fn test_alloc_ptr_as_slice() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            // Store some values.
             for i in 0..3 {
-                mem_space.store(i, i as u8 + 1);
+                alloc_ptr.store(i, i as u8 + 1);
             }
 
-            // Values should be accessible as a slice.
-            let slice = mem_space.as_slice(3);
+            let slice = alloc_ptr.as_slice(3);
             assert_eq!(slice, &[1, 2, 3]);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Pointer must not be null")]
-    fn test_mem_space_as_slice_mut_null_ptr() {
-        let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-        let slice = unsafe { mem_space.as_slice_mut(0) };
+    fn test_alloc_ptr_as_slice_mut_null_ptr() {
+        let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let slice = unsafe { alloc_ptr.as_slice_mut(0) };
         assert_eq!(slice, &mut []);
     }
 
     #[test]
-    fn test_mem_space_as_slice_mut_empty() {
+    fn test_alloc_ptr_as_slice_mut_empty() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            let slice = mem_space.as_slice_mut(0);
+            let slice = alloc_ptr.as_slice_mut(0);
             assert_eq!(slice, &[]);
 
-            // Deallocate memory space or the destructor will panic.
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_as_slice_mut() {
+    fn test_alloc_ptr_as_slice_mut() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            // Store some values.
             for i in 0..3 {
-                mem_space.store(i, i as u8 + 1);
+                alloc_ptr.store(i, i as u8 + 1);
             }
 
-            // Values should be accessible as a mutable slice.
-            let slice = mem_space.as_slice_mut(3);
+            let slice = alloc_ptr.as_slice_mut(3);
             assert_eq!(slice, &mut [1, 2, 3]);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
@@ -1092,23 +1079,21 @@ mod ptr_tests {
 
     impl Drop for DropCounter {
         fn drop(&mut self) {
-            // Increment the drop count.
             *self.count.borrow_mut() += 1;
         }
     }
 
     #[test]
-    fn test_mem_space_drop_init() {
+    fn test_alloc_ptr_drop_init() {
         let drop_count = Rc::new(RefCell::new(0));
 
         unsafe {
-            let mut mem_space: MemorySpace<DropCounter> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(3);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<DropCounter> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(3);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            // Reference 5 elements to the same drop counter.
             for i in 0..3 {
-                mem_space.store(
+                alloc_ptr.store(
                     i,
                     DropCounter {
                         count: Rc::clone(&drop_count),
@@ -1116,17 +1101,14 @@ mod ptr_tests {
                 );
             }
 
-            // Dropping with count 0 is a no-op.
-            mem_space.drop_initialized(0);
+            alloc_ptr.drop_initialized(0);
             assert_eq!(*drop_count.borrow(), 0);
 
-            // Drop all.
-            mem_space.drop_initialized(3);
+            alloc_ptr.drop_initialized(3);
 
-            // `drop` should have been called on all elements, so the drop count must be 3.
             assert_eq!(*drop_count.borrow(), 3);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
@@ -1134,29 +1116,27 @@ mod ptr_tests {
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Drop range must not be empty")]
     #[cfg_attr(miri, ignore)]
-    fn test_mem_space_drop_range_invalid() {
+    fn test_alloc_ptr_drop_range_invalid() {
         unsafe {
-            let mut mem_space: MemorySpace<u8> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(5);
-            let _ = mem_space.allocate(layout, OnError::Panic);
-            mem_space.drop_range(0..0);
+            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(5);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
+            alloc_ptr.drop_range(0..0);
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn test_mem_space_drop_range() {
-        // Drop counter with 0 count initially.
+    fn test_alloc_ptr_drop_range() {
         let drop_count = Rc::new(RefCell::new(0));
 
         unsafe {
-            let mut mem_space: MemorySpace<DropCounter> = MemorySpace::new();
-            let layout = mem_space.make_layout_unchecked(5);
-            let _ = mem_space.allocate(layout, OnError::Panic);
+            let mut alloc_ptr: AllocationPointer<DropCounter> = AllocationPointer::new();
+            let layout = alloc_ptr.make_layout_unchecked(5);
+            let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
-            // Reference 5 elements to the same drop counter.
             for i in 0..5 {
-                mem_space.store(
+                alloc_ptr.store(
                     i,
                     DropCounter {
                         count: Rc::clone(&drop_count),
@@ -1164,20 +1144,18 @@ mod ptr_tests {
                 );
             }
 
-            // Drop 3 elements in the range [0, 3 - 1].
-            mem_space.drop_range(0..3);
+            alloc_ptr.drop_range(0..3);
 
-            // Since the `drop` has been called on 3 elements, the drop count must be 3.
             assert_eq!(*drop_count.borrow(), 3);
 
-            mem_space.deallocate(layout);
+            alloc_ptr.deallocate(layout);
         }
     }
 
     #[test]
-    fn test_mem_space_clone_from() {
+    fn test_alloc_ptr_clone_from() {
         unsafe {
-            let mut source: MemorySpace<u8> = MemorySpace::new();
+            let mut source: AllocationPointer<u8> = AllocationPointer::new();
             let layout = source.make_layout_unchecked(3);
             let _ = source.allocate(layout, OnError::Panic);
 
@@ -1185,13 +1163,13 @@ mod ptr_tests {
                 source.store(i, i as u8 + 1);
             }
 
-            let mut target: MemorySpace<u8> = MemorySpace::new();
+            let mut target: AllocationPointer<u8> = AllocationPointer::new();
             let _ = target.allocate(layout, OnError::Panic);
 
             target.clone_from(source.ptr, 3);
 
             for i in 0..3 {
-                assert_eq!(*source.access(i), *target.access(i));
+                assert_eq!(*source.reference(i), *target.reference(i));
             }
 
             source.deallocate(layout);
@@ -1226,9 +1204,9 @@ mod ptr_tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn test_mem_space_clone_from_safe_unwind() {
-        let mut source: MemorySpace<PanicOnClone> = MemorySpace::new();
-        let mut target: MemorySpace<PanicOnClone> = MemorySpace::new();
+    fn test_alloc_ptr_clone_from_safe_unwind() {
+        let mut source: AllocationPointer<PanicOnClone> = AllocationPointer::new();
+        let mut target: AllocationPointer<PanicOnClone> = AllocationPointer::new();
         unsafe {
             let layout = source.make_layout_unchecked(10);
             let _ = source.allocate(layout, OnError::Panic);
@@ -1244,15 +1222,12 @@ mod ptr_tests {
                 source.store(i, value);
             }
 
-            // Camouflage to enter the catch_unwind block without safety complains.
             let source_ptr = source.ptr as *const ();
-            let target_ptr = &mut target as *mut MemorySpace<PanicOnClone> as *mut ();
+            let target_ptr = &mut target as *mut AllocationPointer<PanicOnClone> as *mut ();
 
             let result = std::panic::catch_unwind(move || {
-                // Cast back to typed pointers.
-                let target = &mut *(target_ptr as *mut MemorySpace<PanicOnClone>);
+                let target = &mut *(target_ptr as *mut AllocationPointer<PanicOnClone>);
                 let source = source_ptr as *const PanicOnClone;
-                // Here we go...
                 target.clone_from(source, 10);
             });
 

@@ -2,7 +2,7 @@ use core::alloc::Layout;
 use core::hint::unreachable_unchecked;
 
 use crate::AllocError;
-use crate::alloc::MemorySpace;
+use crate::alloc::AllocationPointer;
 use crate::error::OnError;
 
 /// The state of the slot in the index.
@@ -46,7 +46,7 @@ pub(crate) struct MapIndex {
     // | Tag: A single byte as flag to store slot's state.                               |
     // | Index: The offset of an entry to be accessed at.                                |
     // -----------------------------------------------------------------------------------
-    memory: MemorySpace<u8>,
+    pointer: AllocationPointer<u8>,
 }
 
 impl MapIndex {
@@ -74,7 +74,7 @@ impl MapIndex {
     #[inline(always)]
     pub(crate) const fn new() -> Self {
         Self {
-            memory: MemorySpace::new(),
+            pointer: AllocationPointer::new(),
         }
     }
 
@@ -89,13 +89,13 @@ impl MapIndex {
     ) -> Result<Self, AllocError> {
         match Self::index_layout(cap) {
             Some((layout, slots_size)) => {
-                let mut mem_space = MemorySpace::new();
+                let mut alloc_ptr = AllocationPointer::new();
                 unsafe {
-                    mem_space.allocate(layout, on_err)?;
+                    alloc_ptr.allocate(layout, on_err)?;
                     // Set the pointer at the offset of the control tags.
-                    mem_space.set_ptr_plus(slots_size);
+                    alloc_ptr.set_plus(slots_size);
                 }
-                Ok(Self { memory: mem_space })
+                Ok(Self { pointer: alloc_ptr })
             }
             None => Err(on_err.overflow()),
         }
@@ -114,8 +114,8 @@ impl MapIndex {
         let unaligned_size = slots_size + cap;
 
         unsafe {
-            let source_start = source.memory.ptr().sub(slots_size);
-            let self_start = self.memory.ptr().sub(slots_size);
+            let source_start = source.pointer.ptr().sub(slots_size);
+            let self_start = self.pointer.ptr().sub(slots_size);
             core::ptr::copy_nonoverlapping(source_start, self_start as *mut u8, unaligned_size)
         }
     }
@@ -133,8 +133,8 @@ impl MapIndex {
             Some((layout, slots_size)) => {
                 unsafe {
                     // Reset the pointer to the start of the allocated memory.
-                    self.memory.set_ptr_minus(slots_size);
-                    self.memory.deallocate(layout)
+                    self.pointer.set_minus(slots_size);
+                    self.pointer.deallocate(layout)
                 }
             }
             // Already checked when allocated, so it must not fail.
@@ -152,7 +152,7 @@ impl MapIndex {
     ///   reallocating and using `Tag` enum to store tag's value.
     #[inline(always)]
     pub(crate) const unsafe fn read_tag(&self, offset: usize) -> Tag {
-        unsafe { self.memory.ptr_as::<Tag>().add(offset).read() }
+        unsafe { self.pointer.base_as::<Tag>().add(offset).read() }
     }
 
     /// Stores the control tag at the specified tag's `offset`.
@@ -162,7 +162,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn store_tag(&mut self, offset: usize, tag: Tag) {
-        unsafe { self.memory.store(offset, tag as u8) };
+        unsafe { self.pointer.store(offset, tag as u8) };
     }
 
     /// Returns a mutable reference to the control tag in the index at tag's `offset`.
@@ -175,7 +175,7 @@ impl MapIndex {
     ///   reallocating and using `Tag` enum to store tag's value.
     #[inline(always)]
     pub(crate) const unsafe fn tag_ref_mut(&mut self, offset: usize) -> &mut Tag {
-        unsafe { &mut *self.memory.ptr_mut_as::<Tag>().add(offset) }
+        unsafe { &mut *self.pointer.base_mut_as::<Tag>().add(offset) }
     }
 
     /// Reads and returns the slot's value according to the specified tag's `offset`.
@@ -185,7 +185,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn read_entry_index(&self, offset: usize) -> usize {
-        unsafe { self.memory.ptr_as::<usize>().sub(offset + 1).read() }
+        unsafe { self.pointer.base_as::<usize>().sub(offset + 1).read() }
     }
 
     /// Stores slot's value according to the specified tag's `offset`.
@@ -196,8 +196,8 @@ impl MapIndex {
     #[inline(always)]
     pub(crate) const unsafe fn store_entry_index(&mut self, offset: usize, value: usize) {
         unsafe {
-            self.memory
-                .ptr_mut_as::<usize>()
+            self.pointer
+                .base_mut_as::<usize>()
                 .sub(offset + 1)
                 .write(value)
         }
@@ -210,7 +210,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn entry_index_ref_mut(&mut self, offset: usize) -> &mut usize {
-        unsafe { &mut *self.memory.ptr_mut_as::<usize>().sub(offset + 1) }
+        unsafe { &mut *self.pointer.base_mut_as::<usize>().sub(offset + 1) }
     }
 
     /// Stores the control tag and slot's value at the specified tag's `offset`.
@@ -233,7 +233,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn set_tags_empty(&mut self, cap: usize) {
-        unsafe { self.memory.memset_zero(cap) }
+        unsafe { self.pointer.memset_zero(cap) }
     }
 }
 
@@ -258,7 +258,7 @@ mod index_tests {
     #[test]
     fn test_index_new() {
         let instance = MapIndex::new();
-        assert!(instance.memory.is_null());
+        assert!(instance.pointer.is_null());
     }
 
     #[test]
@@ -266,7 +266,7 @@ mod index_tests {
         unsafe {
             let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
-            assert!(!instance.memory.is_null());
+            assert!(!instance.pointer.is_null());
 
             instance.deallocate(10)
         }
@@ -380,7 +380,7 @@ mod index_tests {
         unsafe {
             let cap = 10;
             let mut instance = MapIndex::new_allocate_uninit(cap, OnError::Panic).unwrap();
-            assert!(!instance.memory.is_null());
+            assert!(!instance.pointer.is_null());
 
             {
                 let _ = OnDrop::set(cap, |cap| instance.deallocate(*cap));
@@ -388,7 +388,7 @@ mod index_tests {
             }
 
             // Deallocated.
-            assert!(instance.memory.is_null());
+            assert!(instance.pointer.is_null());
         }
     }
 
@@ -397,7 +397,7 @@ mod index_tests {
         unsafe {
             let cap = 10;
             let mut instance = MapIndex::new_allocate_uninit(cap, OnError::Panic).unwrap();
-            assert!(!instance.memory.is_null());
+            assert!(!instance.pointer.is_null());
 
             {
                 let guard = OnDrop::set(cap, |cap| instance.deallocate(*cap));
@@ -406,7 +406,7 @@ mod index_tests {
             }
 
             // Still allocated.
-            assert!(!instance.memory.is_null());
+            assert!(!instance.pointer.is_null());
             instance.deallocate(10);
         }
     }

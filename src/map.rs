@@ -10,7 +10,7 @@ use core::{fmt, mem};
 
 use std::collections::hash_map::DefaultHasher;
 
-use crate::alloc::MemorySpace;
+use crate::alloc::AllocationPointer;
 use crate::error::{AllocError, OnError};
 use crate::index::{MapIndex, Tag};
 use crate::opt::OnDrop;
@@ -105,7 +105,7 @@ pub type EntriesIteratorMut<'a, K, V> =
 /// Stores the fields of the map and allocates/deallocates its pointers.
 /// It does't implement `Drop`. Deallocation is manual.
 struct MapCore<K, V> {
-    entries: MemorySpace<Entry<K, V>>,
+    entries: AllocationPointer<Entry<K, V>>,
     index: MapIndex,
     cap: usize,
     len: usize,
@@ -117,7 +117,7 @@ impl<K, V> MapCore<K, V> {
     const fn new() -> Self {
         Self {
             // Unallocated pointers.
-            entries: MemorySpace::new(),
+            entries: AllocationPointer::new(),
             index: MapIndex::new(),
             cap: 0,
             len: 0,
@@ -139,7 +139,7 @@ impl<K, V> MapCore<K, V> {
         on_err: OnError,
     ) -> Result<MapCore<K, V>, AllocError> {
         unsafe {
-            let mut entries: MemorySpace<Entry<K, V>> = MemorySpace::new();
+            let mut entries: AllocationPointer<Entry<K, V>> = AllocationPointer::new();
 
             let layout = entries.make_layout(cap, on_err)?;
 
@@ -198,7 +198,7 @@ impl<K, V> MapCore<K, V> {
         let mut i = 0;
         unsafe {
             while i < self.len {
-                let entry = self.entries.access(i);
+                let entry = self.entries.reference(i);
                 let mut slot = entry.hash % self.cap;
 
                 'probing: loop {
@@ -510,7 +510,7 @@ where
         let mut i = after + 1;
         unsafe {
             while i <= inc_end {
-                let hash = self.data.entries.access(i).hash;
+                let hash = self.data.entries.reference(i).hash;
                 let mut slot = hash % self.data.cap;
 
                 'probing: loop {
@@ -733,7 +733,7 @@ where
                 match self.data.index.read_tag(slot) {
                     Tag::Occupied => {
                         let entry = self.data.index.read_entry_index(slot);
-                        if key.eq_key(&self.data.entries.access(entry).key) {
+                        if key.eq_key(&self.data.entries.reference(entry).key) {
                             return FindResult { slot, entry };
                         }
                     }
@@ -797,7 +797,7 @@ where
         let result = self.find(hash, &key);
 
         if result.entry_exists() {
-            let entry = unsafe { self.data.entries.access_mut(result.entry) };
+            let entry = unsafe { self.data.entries.reference_mut(result.entry) };
             let old_val = mem::replace(&mut entry.value, value);
             return Some(old_val);
         };
@@ -864,7 +864,7 @@ where
         let result = self.find(hash, key);
 
         if result.entry_exists() {
-            let value = unsafe { &self.data.entries.access(result.entry).value };
+            let value = unsafe { &self.data.entries.reference(result.entry).value };
             return Some(value);
         }
 
@@ -917,7 +917,7 @@ where
         let result = self.find(hash, key);
 
         if result.entry_exists() {
-            let value = unsafe { &mut self.data.entries.access_mut(result.entry).value };
+            let value = unsafe { &mut self.data.entries.reference_mut(result.entry).value };
             return Some(value);
         }
 
@@ -986,7 +986,7 @@ where
             return None;
         }
 
-        let entry = unsafe { self.data.entries.access_first() };
+        let entry = unsafe { self.data.entries.reference_first() };
 
         Some((&entry.key, &entry.value))
     }
@@ -1022,7 +1022,7 @@ where
             return None;
         }
 
-        let entry = unsafe { self.data.entries.access(self.data.len - 1) };
+        let entry = unsafe { self.data.entries.reference(self.data.len - 1) };
 
         Some((&entry.key, &entry.value))
     }
@@ -1064,7 +1064,7 @@ where
                         self.decrement_index(index, self.data.len);
                         self.data.entries.shift_left(index, self.data.len - index);
                     } else {
-                        let last = self.data.entries.access(self.data.len);
+                        let last = self.data.entries.reference(self.data.len);
                         let swapped = self.find(last.hash, &last.key);
                         self.data.index.store_entry_index(swapped.slot, index);
                         self.data.entries.memmove_one(self.data.len, index);
@@ -1217,7 +1217,7 @@ where
         }
 
         // SAFETY: The map is not empty, so an entry must exist.
-        let entry_ref = unsafe { self.data.entries.access_first() };
+        let entry_ref = unsafe { self.data.entries.reference_first() };
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
 
@@ -1272,7 +1272,7 @@ where
             return None;
         }
 
-        let entry_ref = unsafe { self.data.entries.access(self.data.len - 1) };
+        let entry_ref = unsafe { self.data.entries.reference(self.data.len - 1) };
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
 
@@ -1581,7 +1581,7 @@ impl<K, V> Index<usize> for OmniMap<K, V> {
     /// ```
     fn index(&self, index: usize) -> &V {
         assert!(index < self.data.len, "Index out of bounds.");
-        unsafe { &self.data.entries.access(index).value }
+        unsafe { &self.data.entries.reference(index).value }
     }
 }
 
@@ -1610,7 +1610,7 @@ impl<K, V> IndexMut<usize> for OmniMap<K, V> {
     /// ```
     fn index_mut(&mut self, index: usize) -> &mut V {
         assert!(index < self.data.len, "Index out of bounds.");
-        unsafe { &mut self.data.entries.access_mut(index).value }
+        unsafe { &mut self.data.entries.reference_mut(index).value }
     }
 }
 
@@ -1767,7 +1767,7 @@ where
 
 /// An owning iterator over the entries of the map.
 pub struct OmniMapIterator<K, V> {
-    entries: MemorySpace<Entry<K, V>>,
+    entries: AllocationPointer<Entry<K, V>>,
     cap: usize,
     offset: usize,
     end: usize,
@@ -1777,7 +1777,7 @@ impl<K, V> OmniMapIterator<K, V> {
     #[inline]
     const fn new() -> Self {
         Self {
-            entries: MemorySpace::new(),
+            entries: AllocationPointer::new(),
             cap: 0,
             end: 0,
             offset: 0,
@@ -1871,7 +1871,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         }
 
         let mut iterator = OmniMapIterator {
-            entries: MemorySpace::new(),
+            entries: AllocationPointer::new(),
             cap: self.data.cap,
             end: self.data.len,
             offset: 0,
