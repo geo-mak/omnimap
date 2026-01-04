@@ -16,14 +16,14 @@ use crate::index::{MapIndex, Tag};
 use crate::opt::OnDrop;
 use crate::opt::branch_prediction::{likely, unlikely};
 
-pub trait EqKey<K> {
+pub trait EqKey<K: ?Sized> {
     fn eq_key(&self, key: &K) -> bool;
 }
 
 impl<B, K> EqKey<K> for B
 where
-    K: Borrow<B>,
-    B: Eq,
+    K: ?Sized + Borrow<B>,
+    B: ?Sized + Eq,
 {
     #[inline(always)]
     fn eq_key(&self, key: &K) -> bool {
@@ -703,7 +703,7 @@ where
     #[inline]
     fn make_hash<B>(key: &B) -> usize
     where
-        B: Hash,
+        B: ?Sized + Hash,
     {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
@@ -724,7 +724,7 @@ where
     /// because its value can be an invalid index.
     fn find<B>(&self, hash: usize, key: &B) -> FindResult
     where
-        B: EqKey<K>,
+        B: ?Sized + EqKey<K>,
     {
         unsafe {
             // TODO: Maintaining power-of-two capacity when shrinking is the better option, even if more memory is reserved.
@@ -853,7 +853,7 @@ where
     pub fn get<B>(&self, key: &B) -> Option<&V>
     where
         K: Borrow<B>,
-        B: Hash + Eq,
+        B: ?Sized + Hash + Eq,
     {
         if self.is_empty() {
             return None;
@@ -906,7 +906,7 @@ where
     pub fn get_mut<B>(&mut self, key: &B) -> Option<&mut V>
     where
         K: Borrow<B>,
-        B: Hash + Eq,
+        B: ?Sized + Hash + Eq,
     {
         if self.is_empty() {
             return None;
@@ -922,6 +922,37 @@ where
         }
 
         None
+    }
+
+    /// Returns `true` if the map contains a value for the specified `key`.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(1) on average.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// map.insert(1, "a");
+    ///
+    /// // Key exists.
+    /// assert!(map.contains_key(&1));
+    ///
+    /// // Key does not exist.
+    /// assert!(!map.contains_key(&2));
+    /// ```
+    #[must_use]
+    #[inline]
+    pub fn contains_key<B>(&self, key: &B) -> bool
+    where
+        K: Borrow<B>,
+        B: ?Sized + Hash + Eq,
+    {
+        self.get(key).is_some()
     }
 
     /// Returns the first entry in the map.
@@ -996,33 +1027,6 @@ where
         Some((&entry.key, &entry.value))
     }
 
-    /// Returns `true` if the map contains a value for the specified `key`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1) on average.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    ///
-    /// map.insert(1, "a");
-    ///
-    /// // Key exists.
-    /// assert!(map.contains_key(&1));
-    ///
-    /// // Key does not exist.
-    /// assert!(!map.contains_key(&2));
-    /// ```
-    #[must_use]
-    #[inline]
-    pub fn contains_key(&self, key: &K) -> bool {
-        self.get(key).is_some()
-    }
-
     /// Removes an entry by its `key` and returns its value.
     ///
     /// If `SHIFT` is `true`, this method will shift all entries after it to fill the gab, and
@@ -1035,7 +1039,11 @@ where
     ///
     /// Map must not be empty when calling this method.
     #[inline]
-    fn remove_entry<const SHIFT: bool>(&mut self, key: &K) -> Option<V> {
+    fn remove_entry<B, const SHIFT: bool>(&mut self, key: &B) -> Option<V>
+    where
+        K: Borrow<B>,
+        B: ?Sized + Hash + Eq,
+    {
         let hash = Self::make_hash(key);
 
         let result = self.find(hash, key);
@@ -1116,11 +1124,15 @@ where
     /// // Remove a non-existing key
     /// assert_eq!(map.shift_remove(&1), None);
     /// ```
-    pub fn shift_remove(&mut self, key: &K) -> Option<V> {
+    pub fn shift_remove<B>(&mut self, key: &B) -> Option<V>
+    where
+        K: Borrow<B>,
+        B: ?Sized + Hash + Eq,
+    {
         if self.is_empty() {
             return None;
         }
-        self.remove_entry::<true>(key)
+        self.remove_entry::<B, true>(key)
     }
 
     /// Removes an entry by its `key`, and swaps its place with the last entry.
@@ -1162,11 +1174,15 @@ where
     /// // The last entry has been swapped, and it is accessible at the index of the removed entry.
     /// assert_eq!(map[0], "c");
     /// ```
-    pub fn swap_remove(&mut self, key: &K) -> Option<V> {
+    pub fn swap_remove<B>(&mut self, key: &B) -> Option<V>
+    where
+        K: Borrow<B>,
+        B: ?Sized + Hash + Eq,
+    {
         if self.is_empty() {
             return None;
         }
-        self.remove_entry::<false>(key)
+        self.remove_entry::<B, false>(key)
     }
 
     /// Pops the first entry from the map.
