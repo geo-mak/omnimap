@@ -12,8 +12,8 @@ use std::collections::hash_map::DefaultHasher;
 use crate::alloc::MemorySpace;
 use crate::error::{AllocError, OnError};
 use crate::index::{MapIndex, Tag};
-use crate::opt::branch_prediction::{likely, unlikely};
 use crate::opt::OnDrop;
+use crate::opt::branch_prediction::{likely, unlikely};
 
 struct FindResult {
     slot: usize,
@@ -158,7 +158,7 @@ impl<K, V> MapData<K, V> {
     /// Data must be allocated before calling this method.
     #[inline(always)]
     unsafe fn drop_initialized(&mut self) {
-        self.entries.drop_initialized(self.len);
+        unsafe { self.entries.drop_initialized(self.len) };
     }
 
     /// Deallocates index and entries **without** resetting the fields.
@@ -169,9 +169,11 @@ impl<K, V> MapData<K, V> {
     /// Data must be allocated before calling this method.
     #[inline]
     unsafe fn deallocate(&mut self) {
-        let layout = self.entries.make_layout_unchecked(self.cap);
-        self.entries.deallocate(layout);
-        self.index.deallocate(self.cap);
+        unsafe {
+            let layout = self.entries.make_layout_unchecked(self.cap);
+            self.entries.deallocate(layout);
+            self.index.deallocate(self.cap);
+        }
     }
 
     /// Builds the index of the map according to the current entries and the capacity of the index.

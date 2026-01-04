@@ -1,9 +1,9 @@
 use core::alloc::Layout;
 use core::hint::unreachable_unchecked;
 
+use crate::AllocError;
 use crate::alloc::MemorySpace;
 use crate::error::OnError;
-use crate::AllocError;
 
 /// The state of the slot in the index.
 #[derive(Clone, Copy, Debug)]
@@ -91,9 +91,11 @@ impl MapIndex {
         match Self::index_layout(cap) {
             Some((layout, slots_size)) => {
                 let mut mem_space = MemorySpace::new();
-                mem_space.allocate(layout, on_err)?;
-                // Set the pointer at the offset of the control tags.
-                mem_space.set_ptr_plus(slots_size);
+                unsafe {
+                    mem_space.allocate(layout, on_err)?;
+                    // Set the pointer at the offset of the control tags.
+                    mem_space.set_ptr_plus(slots_size);
+                }
                 Ok(Self { memory: mem_space })
             }
             None => Err(on_err.overflow()),
@@ -112,10 +114,11 @@ impl MapIndex {
         // Copy the useful data without the padding bytes.
         let unaligned_size = slots_size + cap;
 
-        let source_start = source.memory.ptr().sub(slots_size);
-        let self_start = self.memory.ptr().sub(slots_size);
-
-        core::ptr::copy_nonoverlapping(source_start, self_start as *mut u8, unaligned_size)
+        unsafe {
+            let source_start = source.memory.ptr().sub(slots_size);
+            let self_start = self.memory.ptr().sub(slots_size);
+            core::ptr::copy_nonoverlapping(source_start, self_start as *mut u8, unaligned_size)
+        }
     }
 
     /// Resets the pointer to the start of the allocated buffer and deallocates the current index
@@ -129,12 +132,14 @@ impl MapIndex {
     pub(crate) unsafe fn deallocate(&mut self, cap: usize) {
         match Self::index_layout(cap) {
             Some((layout, slots_size)) => {
-                // Reset the pointer to the start of the allocated memory.
-                self.memory.set_ptr_minus(slots_size);
-                self.memory.deallocate(layout)
+                unsafe {
+                    // Reset the pointer to the start of the allocated memory.
+                    self.memory.set_ptr_minus(slots_size);
+                    self.memory.deallocate(layout)
+                }
             }
             // Already checked when allocated, so it must not fail.
-            None => unreachable_unchecked(),
+            None => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -148,7 +153,7 @@ impl MapIndex {
     ///   reallocating and using `Tag` enum to store tag's value.
     #[inline(always)]
     pub(crate) const unsafe fn read_tag(&self, offset: usize) -> Tag {
-        self.memory.ptr_as::<Tag>().add(offset).read()
+        unsafe { self.memory.ptr_as::<Tag>().add(offset).read() }
     }
 
     /// Stores the control tag at the specified tag's `offset`.
@@ -158,7 +163,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn store_tag(&mut self, offset: usize, tag: Tag) {
-        self.memory.store(offset, tag as u8);
+        unsafe { self.memory.store(offset, tag as u8) };
     }
 
     /// Returns a mutable reference to the control tag in the index at tag's `offset`.
@@ -171,7 +176,7 @@ impl MapIndex {
     ///   reallocating and using `Tag` enum to store tag's value.
     #[inline(always)]
     pub(crate) const unsafe fn tag_ref_mut(&mut self, offset: usize) -> &mut Tag {
-        &mut *self.memory.ptr_mut_as::<Tag>().add(offset)
+        unsafe { &mut *self.memory.ptr_mut_as::<Tag>().add(offset) }
     }
 
     /// Reads and returns the slot's value according to the specified tag's `offset`.
@@ -181,7 +186,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn read_entry_index(&self, offset: usize) -> usize {
-        self.memory.ptr_as::<usize>().sub(offset + 1).read()
+        unsafe { self.memory.ptr_as::<usize>().sub(offset + 1).read() }
     }
 
     /// Stores slot's value according to the specified tag's `offset`.
@@ -191,10 +196,12 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn store_entry_index(&mut self, offset: usize, value: usize) {
-        self.memory
-            .ptr_mut_as::<usize>()
-            .sub(offset + 1)
-            .write(value)
+        unsafe {
+            self.memory
+                .ptr_mut_as::<usize>()
+                .sub(offset + 1)
+                .write(value)
+        }
     }
 
     /// Returns a mutable reference to a slot's value according to the specified tag's `offset`.
@@ -204,7 +211,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn entry_index_ref_mut(&mut self, offset: usize) -> &mut usize {
-        &mut *self.memory.ptr_mut_as::<usize>().sub(offset + 1)
+        unsafe { &mut *self.memory.ptr_mut_as::<usize>().sub(offset + 1) }
     }
 
     /// Stores the control tag and slot's value at the specified tag's `offset`.
@@ -214,8 +221,10 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn store(&mut self, offset: usize, tag: Tag, value: usize) {
-        self.store_tag(offset, tag);
-        self.store_entry_index(offset, value);
+        unsafe {
+            self.store_tag(offset, tag);
+            self.store_entry_index(offset, value)
+        };
     }
 
     /// Sets all control tags to empty.
@@ -225,7 +234,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn set_tags_empty(&mut self, cap: usize) {
-        self.memory.memset_zero(cap)
+        unsafe { self.memory.memset_zero(cap) }
     }
 }
 

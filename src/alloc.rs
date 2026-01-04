@@ -4,8 +4,8 @@ use core::ops::Range;
 use core::ptr;
 
 use crate::error::{AllocError, OnError};
-use crate::opt::branch_prediction::likely;
 use crate::opt::OnDrop;
+use crate::opt::branch_prediction::likely;
 use std::alloc::{self, alloc};
 
 /// Debug-mode check for the valid alignment.
@@ -157,15 +157,17 @@ impl<T> MemorySpace<T> {
     #[must_use]
     #[inline(always)]
     pub(crate) const unsafe fn make_layout_unchecked(&self, count: usize) -> Layout {
-        // Checked in debug-mode for overflow as part of Rust's assert_unsafe_precondition.
-        let size = count.unchecked_mul(Self::T_SIZE);
+        unsafe {
+            // Checked in debug-mode for overflow as part of Rust's assert_unsafe_precondition.
+            let size = count.unchecked_mul(Self::T_SIZE);
 
-        // More constrained size check.
-        #[cfg(debug_assertions)]
-        debug_layout_size_align(size, Self::T_ALIGN);
+            // More constrained size check.
+            #[cfg(debug_assertions)]
+            debug_layout_size_align(size, Self::T_ALIGN);
 
-        // Also checked in debug-mode by assert_unsafe_precondition.
-        Layout::from_size_align_unchecked(size, Self::T_ALIGN)
+            // Also checked in debug-mode by assert_unsafe_precondition.
+            Layout::from_size_align_unchecked(size, Self::T_ALIGN)
+        }
     }
 
     /// Creates a new layout for the specified `count` of type `T`.
@@ -190,7 +192,7 @@ impl<T> MemorySpace<T> {
             debug_assert_non_zero_size(size);
 
             if Self::T_MAX_ALLOC_SIZE > size {
-                let layout = Layout::from_size_align_unchecked(size, Self::T_ALIGN);
+                let layout = unsafe { Layout::from_size_align_unchecked(size, Self::T_ALIGN) };
                 return Ok(layout);
             }
         }
@@ -243,7 +245,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_layout_size_align(layout.size(), layout.align());
 
-        let ptr = alloc(layout) as *mut T;
+        let ptr = unsafe { alloc(layout) as *mut T };
 
         if likely(!ptr.is_null()) {
             self.ptr = ptr;
@@ -276,7 +278,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_layout_size_align(layout.size(), layout.align());
 
-        alloc::dealloc(self.ptr as *mut u8, layout);
+        unsafe { alloc::dealloc(self.ptr as *mut u8, layout) };
 
         self.ptr = ptr::null();
     }
@@ -327,7 +329,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        self.ptr = self.ptr.add(t_offset);
+        unsafe { self.ptr = self.ptr.add(t_offset) };
     }
 
     /// Sets the base pointer at current offset minus `t_offset` of the strides of `T`.
@@ -336,7 +338,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        self.ptr = self.ptr.sub(t_offset);
+        unsafe { self.ptr = self.ptr.sub(t_offset) };
     }
 
     /// Writes `0` bytes to `count` values with the size of `T` in the allocated memory space
@@ -364,7 +366,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        ptr::write_bytes(self.ptr as *mut T, 0, count);
+        unsafe { ptr::write_bytes(self.ptr as *mut T, 0, count) };
     }
 
     /// Stores a value at the specified offset `at`.
@@ -389,7 +391,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        ptr::write((self.ptr as *mut T).add(at), value);
+        unsafe { ptr::write((self.ptr as *mut T).add(at), value) };
     }
 
     /// Returns a reference to an element at the specified offset `at`.
@@ -411,7 +413,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        &*self.ptr.add(at)
+        unsafe { &*self.ptr.add(at) }
     }
 
     /// Returns a mutable reference to an element at the specified offset `at`.
@@ -434,7 +436,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        &mut *(self.ptr as *mut T).add(at)
+        unsafe { &mut *(self.ptr as *mut T).add(at) }
     }
 
     /// Returns a reference to the first element.
@@ -455,7 +457,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        &*self.ptr
+        unsafe { &*self.ptr }
     }
 
     /// Reads and returns the value at the specified offset `at`.
@@ -481,7 +483,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        ptr::read((self.ptr as *mut T).add(at))
+        unsafe { ptr::read((self.ptr as *mut T).add(at)) }
     }
 
     /// Shifts the `count` values after `at` to the left, overwriting the value at `at`.
@@ -501,10 +503,11 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        let dst = (self.ptr as *mut T).add(at);
-        let src = dst.add(1);
-
-        ptr::copy(src, dst, count);
+        unsafe {
+            let dst = (self.ptr as *mut T).add(at);
+            let src = dst.add(1);
+            ptr::copy(src, dst, count);
+        }
     }
 
     /// Copies the value at the offset `from` to the offset `to`, overwriting the value at `to`
@@ -531,10 +534,11 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        let src = (self.ptr as *mut T).add(from);
-        let dst = (self.ptr as *mut T).add(to);
-
-        ptr::copy(src, dst, 1);
+        unsafe {
+            let src = (self.ptr as *mut T).add(from);
+            let dst = (self.ptr as *mut T).add(to);
+            ptr::copy(src, dst, 1);
+        }
     }
 
     /// Calls `drop` on the initialized elements with the specified `count` starting from the
@@ -565,7 +569,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count));
+        unsafe { ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count)) };
     }
 
     /// Calls `drop` on the initialized elements in the specified range.
@@ -597,13 +601,14 @@ impl<T> MemorySpace<T> {
     pub(crate) unsafe fn drop_range(&mut self, range: Range<usize>) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
-
         debug_assert!(!range.is_empty(), "Drop range must not be empty");
 
-        ptr::drop_in_place(ptr::slice_from_raw_parts_mut(
-            self.ptr.add(range.start) as *mut T,
-            range.end - range.start,
-        ));
+        unsafe {
+            ptr::drop_in_place(ptr::slice_from_raw_parts_mut(
+                self.ptr.add(range.start) as *mut T,
+                range.end - range.start,
+            ))
+        };
     }
 
     /// Returns an immutable slice of the initialized elements starting from the offset `0`.
@@ -628,7 +633,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        &*ptr::slice_from_raw_parts(self.ptr, count)
+        unsafe { &*ptr::slice_from_raw_parts(self.ptr, count) }
     }
 
     /// Returns a mutable slice over `count` initialized elements starting from the offset `0`.
@@ -653,7 +658,7 @@ impl<T> MemorySpace<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        &mut *ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count)
+        unsafe { &mut *ptr::slice_from_raw_parts_mut(self.ptr as *mut T, count) }
     }
 
     /// Clones values of type `T` from the memory space pointed to by the source pointer `source`.
@@ -686,13 +691,16 @@ impl<T> MemorySpace<T> {
         let self_ptr = self.ptr as *mut T;
 
         let cloned = 0;
-        let mut drop_guard = OnDrop::set(cloned, |cloned| self.drop_initialized(*cloned));
+        let mut drop_guard =
+            OnDrop::set(cloned, |cloned| unsafe { self.drop_initialized(*cloned) });
 
-        for i in 0..clone_count {
-            let src = source.add(i);
-            let dst = self_ptr.add(i);
-            ptr::write(dst, (*src).clone());
-            drop_guard.arg += 1; // <- Update.
+        unsafe {
+            for i in 0..clone_count {
+                let src = source.add(i);
+                let dst = self_ptr.add(i);
+                ptr::write(dst, (*src).clone());
+                drop_guard.arg += 1;
+            }
         }
 
         // Cloned successfully (If any).
