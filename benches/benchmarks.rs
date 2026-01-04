@@ -4,8 +4,15 @@ use std::hint::black_box;
 use omnimap::OmniMap;
 use std::collections::HashMap;
 
-// Benchmarking module for OmniMap.
+// Notes:
 // These benchmarks are not exhaustive, and they focus on KPIs like insert, get, remove, etc.
+//
+// Omnimap is a totally different `beast`, so benchmarking in comparison to `std::HashMap`
+// is a very, very high bar because:
+// - Omnimap allocates and manages two memory segments, one for entries, and one for the index.
+// - Omnimap doesn't utilize SIMD instruction and relies solely on normal compiler optimizations.
+// - Omnimap's current capacity management is not especially optimized.
+//
 // To run benchmarks, use the following command:
 // cargo bench --bench benchmarks
 
