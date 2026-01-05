@@ -8,6 +8,7 @@ use core::ops::{Index, IndexMut};
 use core::slice::{Iter, IterMut};
 use core::{fmt, mem};
 
+use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 
 use crate::alloc::AllocationPointer;
@@ -108,8 +109,8 @@ struct MapCore<K, V> {
     entries: AllocationPointer<Entry<K, V>>,
     index: MapIndex,
     cap: usize,
+    free: usize,
     len: usize,
-    deleted: usize,
 }
 
 impl<K, V> MapCore<K, V> {
@@ -120,8 +121,8 @@ impl<K, V> MapCore<K, V> {
             entries: AllocationPointer::new(),
             index: MapIndex::new(),
             cap: 0,
+            free: 0,
             len: 0,
-            deleted: 0,
         }
     }
 
@@ -159,12 +160,22 @@ impl<K, V> MapCore<K, V> {
                 index,
                 entries,
                 cap,
+                free: Self::usable_capacity_from(cap),
                 len: 0,
-                deleted: 0,
             };
 
             Ok(instance)
         }
+    }
+
+    #[inline(always)]
+    const fn usable_capacity_from(cap: usize) -> usize {
+        (cap >> 3) * 7 + ((cap & 7) * 7 >> 3)
+    }
+
+    #[inline(always)]
+    const fn usable_capacity(&self) -> usize {
+        Self::usable_capacity_from(self.cap)
     }
 
     /// Calls drop on initialized elements in entries.
@@ -322,14 +333,24 @@ where
     /// assert_eq!(map.capacity(), 0);
     ///
     /// let map: OmniMap<i32, &str> = OmniMap::default();
-    /// assert_eq!(map.capacity(), 16);
+    /// assert_eq!(map.capacity(), 14);
     ///
     /// let map: OmniMap<i32, &str> = OmniMap::with_capacity(10);
     /// assert_eq!(map.capacity(), 10);
     /// ```
     #[inline(always)]
     pub const fn capacity(&self) -> usize {
-        (self.data.cap >> 3) * 7 + ((self.data.cap & 7) * 7 >> 3)
+        self.data.usable_capacity()
+    }
+
+    #[inline(always)]
+    pub const fn allocated_capacity(&self) -> usize {
+        self.data.cap
+    }
+
+    /// Returns the remaining capacity.
+    pub const fn available_capacity(&self) -> usize {
+        self.data.free
     }
 
     /// Returns the number of entries in the `OmniMap`.
@@ -392,7 +413,6 @@ where
         if let Some(plus_one) = given.checked_add(1)
             && let Some(mul_eight) = plus_one.checked_mul(8)
         {
-            // Can't overflow.
             return Ok(mul_eight / 7);
         }
         Err(on_err.overflow())
@@ -429,9 +449,30 @@ where
         on_err: OnError,
     ) -> Result<(), AllocError> {
         debug_assert_eq!(self.data.cap, 0);
-
         self.data = MapCore::new_allocate::<INIT>(cap, on_err)?;
+        Ok(())
+    }
 
+    /// Deallocates the entries and the index without calling `drop` on the initialized entries.
+    ///
+    /// fields `cap` and `free` will be reset to `0`.
+    ///
+    /// Safety: Index and entries must be allocated before calling this method.
+    fn deallocate(&mut self) {
+        debug_assert!(self.data.len == 0);
+        unsafe {
+            self.data.deallocate();
+        }
+        self.data.cap = 0;
+        self.data.free = 0;
+    }
+
+    #[inline]
+    fn reallocate_empty(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
+        debug_assert!(self.data.len == 0);
+        let mut new_data = MapCore::<K, V>::new_allocate::<true>(new_cap, on_err)?;
+        mem::swap(&mut self.data, &mut new_data);
+        unsafe { new_data.deallocate() }
         Ok(())
     }
 
@@ -447,15 +488,18 @@ where
     fn reallocate_reindex(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
         let mut new_data = MapCore::<K, V>::new_allocate::<true>(new_cap, on_err)?;
 
+        let current_len = self.data.len;
+
         unsafe {
             core::ptr::copy_nonoverlapping(
                 self.data.entries.ptr(),
                 new_data.entries.ptr_mut(),
-                self.data.len,
+                current_len,
             )
         };
 
-        new_data.len = self.data.len;
+        new_data.len = current_len;
+        new_data.free -= current_len;
         new_data.build_index();
 
         mem::swap(&mut self.data, &mut new_data);
@@ -463,23 +507,6 @@ where
         unsafe { new_data.deallocate() }
 
         Ok(())
-    }
-
-    /// Deallocates the entries and the index without calling `drop` on the initialized entries.
-    ///
-    /// Fields of capacity, length, and deleted counter will be reset to `0`.
-    ///
-    /// # Safety
-    ///
-    /// Index and entries must be allocated before calling this method.
-    fn deallocate(&mut self) {
-        unsafe {
-            self.data.deallocate();
-        }
-
-        self.data.cap = 0;
-        self.data.len = 0;
-        self.data.deleted = 0;
     }
 
     /// Decrements the index of all occupied slots with index value greater than `after` by using
@@ -561,7 +588,7 @@ where
     #[inline(always)]
     fn reindex(&mut self) {
         unsafe { self.data.index.set_tags_empty(self.data.cap) };
-        self.data.deleted = 0;
+        self.data.free = self.data.usable_capacity() - self.data.len;
         self.data.build_index();
     }
 
@@ -788,7 +815,7 @@ where
     /// ```
     #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
-        if unlikely(self.data.len + self.data.deleted == self.capacity()) {
+        if unlikely(self.data.free == 0) {
             self.reclaim_or_reserve();
         }
 
@@ -811,12 +838,14 @@ where
             self.data
                 .entries
                 .store(self.data.len, Entry::new(key, value, hash));
+
             self.data
                 .index
                 .store(result.slot, Tag::Occupied, self.data.len);
         }
 
         self.data.len += 1;
+        self.data.free -= 1;
 
         // Key was new and inserted.
         None
@@ -1052,7 +1081,7 @@ where
             let index = result.entry;
 
             self.data.len -= 1;
-            self.data.deleted += 1;
+            // Deleted entries are currently not recoverable so self.free remains unchanged.
 
             unsafe {
                 self.data.index.store_tag(result.slot, Tag::Deleted);
@@ -1227,7 +1256,6 @@ where
         );
 
         self.data.len -= 1;
-        self.data.deleted += 1;
 
         unsafe {
             self.data.index.store_tag(result.slot, Tag::Deleted);
@@ -1282,28 +1310,12 @@ where
         );
 
         self.data.len -= 1;
-        self.data.deleted += 1;
 
         unsafe {
             self.data.index.store_tag(result.slot, Tag::Deleted);
             let removed = self.data.entries.read_for_ownership(self.data.len);
 
             Some((removed.key, removed.value))
-        }
-    }
-
-    /// Shrinks or deallocates the map depending on its length.
-    /// Extra reserves will be added to `base_cap` according to the current load factor.
-    #[inline]
-    fn shrink_or_deallocate(&mut self, base_cap: usize) {
-        if likely(self.data.len > 0) {
-            let new_cap = Self::allocation_capacity_unchecked(base_cap);
-            match self.reallocate_reindex(new_cap, OnError::Panic) {
-                Ok(_) => (),
-                Err(_) => unsafe { unreachable_unchecked() },
-            }
-        } else {
-            self.deallocate();
         }
     }
 
@@ -1333,10 +1345,25 @@ where
     ///
     /// assert_eq!(map.capacity(), 5);
     /// ```
-    #[inline]
     pub fn shrink_to(&mut self, capacity: usize) {
-        if likely(capacity >= self.data.len && capacity < self.capacity()) {
-            self.shrink_or_deallocate(capacity);
+        let current_len = self.data.len;
+        let max_cap = max(current_len, capacity);
+        // AKA self is allocated and layout can be unchecked.
+        if max_cap < self.capacity() {
+            if max_cap == 0 {
+                self.deallocate();
+                return;
+            }
+            let new_cap = Self::allocation_capacity_unchecked(max_cap);
+            let result = if current_len == 0 {
+                self.reallocate_empty(new_cap, OnError::Panic)
+            } else {
+                self.reallocate_reindex(new_cap, OnError::Panic)
+            };
+            match result {
+                Ok(_) => (),
+                Err(_) => unsafe { unreachable_unchecked() },
+            }
         }
     }
 
@@ -1354,7 +1381,7 @@ where
     ///
     /// let mut map = OmniMap::with_capacity(10);
     ///
-    /// assert_eq!(map.capacity(), 10 );
+    /// assert_eq!(map.capacity(), 10);
     ///
     /// // Insert some elements
     ///  map.insert(1, "a");
@@ -1367,8 +1394,17 @@ where
     /// ```
     #[inline]
     pub fn shrink_to_fit(&mut self) {
-        if likely(self.capacity() > self.data.len) {
-            self.shrink_or_deallocate(self.data.len);
+        let current_len = self.data.len;
+        if current_len < self.capacity() {
+            if current_len == 0 {
+                self.deallocate();
+                return;
+            }
+            let new_cap = Self::allocation_capacity_unchecked(current_len);
+            match self.reallocate_reindex(new_cap, OnError::Panic) {
+                Ok(_) => (),
+                Err(_) => unsafe { unreachable_unchecked() },
+            }
         }
     }
 
@@ -1403,7 +1439,7 @@ where
         let protected_clear = OnDrop::set(self, |current| {
             unsafe { current.data.index.set_tags_empty(current.data.cap) };
             current.data.len = 0;
-            current.data.deleted = 0;
+            current.data.free = current.data.usable_capacity();
         });
 
         unsafe {
@@ -1516,19 +1552,6 @@ where
     pub fn iter_values(&self) -> impl Iterator<Item = &V> {
         self.iter_entries().map(|entry| &entry.value)
     }
-
-    /// Returns the current load factor.
-    ///
-    /// If capacity is `0`, `0.0` will be returned, which implies that `0.0` as a result is not an
-    /// indicator for available capacity. Use `capacity()` method for that particular case.
-    #[inline(always)]
-    pub const fn load_factor(&self) -> f64 {
-        if self.data.cap == 0 {
-            0.0
-        } else {
-            (self.data.len + self.data.deleted) as f64 / self.data.cap as f64
-        }
-    }
 }
 
 impl<K, V> Default for OmniMap<K, V>
@@ -1536,7 +1559,7 @@ where
     K: Eq + Hash,
 {
     /// Creates a new `OmniMap` with the default capacity.
-    /// The default capacity is set to `16`.
+    /// The default capacity is set to `16`, with 14 as useable capacity.
     ///
     /// # Panics
     ///
@@ -1549,11 +1572,16 @@ where
     ///
     /// let map: OmniMap<i32, &str> = OmniMap::default();
     ///
-    /// assert_eq!(map.capacity(), 16);
+    /// assert_eq!(map.capacity(), 14);
     /// ```
     #[inline]
     fn default() -> Self {
-        Self::with_capacity(Self::DEFAULT_CAPACITY)
+        unsafe {
+            match MapCore::new_allocate::<true>(Self::DEFAULT_CAPACITY, OnError::Panic) {
+                Ok(data) => OmniMap { data },
+                Err(_) => unreachable_unchecked(),
+            }
+        }
     }
 }
 
@@ -1644,11 +1672,10 @@ where
                         .clone_from(self.data.entries.ptr(), self.data.len);
                     instance.data.len = self.data.len;
                     if COMPACT {
-                        instance.data.deleted = 0;
+                        instance.data.free -= instance.data.len;
                         instance.data.build_index();
                     } else {
-                        instance.data.deleted = self.data.deleted;
-
+                        instance.data.free = self.data.free;
                         instance
                             .data
                             .index
@@ -1938,13 +1965,6 @@ impl<K, V> OmniMap<K, V> {
     ///
     /// This method is used for testing purposes only and not available in release builds.
     pub(crate) fn debug_deleted(&self) -> usize {
-        self.data.deleted
-    }
-
-    /// Returns the number of allocated slots/entries.
-    ///
-    /// This method is used for testing purposes only and not available in release builds.
-    pub(crate) fn debug_allocated_cap(&self) -> usize {
-        self.data.cap
+        self.data.usable_capacity() - (self.data.free + self.data.len)
     }
 }
