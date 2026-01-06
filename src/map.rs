@@ -486,9 +486,9 @@ impl<K, V> MapCore<K, V> {
     where
         B: ?Sized + EqKey<K>,
     {
+        let mut slot = hash % self.cap;
+
         unsafe {
-            // TODO: Maintaining power-of-two capacity when shrinking is the better option, even if more memory is reserved.
-            let mut slot = hash % self.cap;
             loop {
                 match self.index.read_tag(slot) {
                     Tag::Occupied => {
@@ -498,7 +498,7 @@ impl<K, V> MapCore<K, V> {
                         }
                     }
                     Tag::Empty => return FindResult::just_slot(slot),
-                    Tag::Deleted => {}
+                    Tag::Deleted => {/* TODO: Recovering it can save expensive reallocations */}
                 }
                 slot = (slot + 1) % self.cap;
             }
