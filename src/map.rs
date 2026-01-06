@@ -136,7 +136,7 @@ impl<K, V> MapCore<K, V> {
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
     fn new_allocate_uninit(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, AllocError> {
         unsafe {
-            let mut entries: AllocationPointer<Entry<K, V>> = AllocationPointer::new();
+            let mut entries = AllocationPointer::new();
 
             let layout = entries.make_layout(cap, on_err)?;
 
@@ -178,7 +178,7 @@ impl<K, V> MapCore<K, V> {
     #[inline]
     fn reallocate_empty(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
         debug_assert!(self.len == 0);
-        let mut new_data = MapCore::<K, V>::new_allocate_init(new_cap, on_err)?;
+        let mut new_data = Self::new_allocate_init(new_cap, on_err)?;
         mem::swap(self, &mut new_data);
         unsafe { new_data.deallocate() }
         Ok(())
@@ -248,7 +248,7 @@ impl<K, V> MapCore<K, V> {
     /// All internal calls are checked, with result depends on the error handling context `on_err`.
     fn reserve_additional(&mut self, additional: usize, on_err: OnError) -> Result<(), AllocError> {
         if likely(additional != 0) {
-            let extra_cap = MapCore::<K, V>::allocation_capacity(additional, on_err)?;
+            let extra_cap = Self::allocation_capacity(additional, on_err)?;
             if likely(self.cap != 0) {
                 match self.cap.checked_add(extra_cap) {
                     Some(new_cap) => self.reallocate_reindex(new_cap, on_err),
@@ -425,7 +425,6 @@ impl<K, V> Default for OmniMap<K, V> {
     }
 }
 
-// Core implementation
 impl<K, V> OmniMap<K, V> {
     const DEFAULT_CAPACITY: usize = 16;
 
