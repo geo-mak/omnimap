@@ -498,7 +498,7 @@ impl<K, V> MapCore<K, V> {
                         }
                     }
                     Tag::Empty => return FindResult::just_slot(slot),
-                    Tag::Deleted => {/* TODO: Recovering it can save expensive reallocations */}
+                    Tag::Deleted => { /* TODO: Recovering it can save expensive reallocations */ }
                 }
                 slot = (slot + 1) % self.cap;
             }
@@ -562,6 +562,7 @@ impl<K, V> MapCore<K, V> {
     /// This method makes it safe to iterate over the entries without worrying about the state of
     /// the pointer and to trick the compiler to return empty iterator without type inference
     /// issues when used with `map`.
+    #[inline]
     fn iter_entries(&self) -> Iter<'_, Entry<K, V>> {
         if self.len == 0 {
             return [].iter();
@@ -574,6 +575,7 @@ impl<K, V> MapCore<K, V> {
     /// This method makes it safe to iterate over the entries without worrying about the state of
     /// the pointer and to trick the compiler to return empty iterator without type inference
     /// issues when used with `map`.
+    #[inline]
     fn iter_entries_mut(&mut self) -> IterMut<'_, Entry<K, V>> {
         if self.len == 0 {
             return [].iter_mut();
@@ -1191,6 +1193,7 @@ impl<K, V> Index<usize> for OmniMap<K, V> {
     /// assert_eq!(map[0], "a");
     /// assert_eq!(map[1], "b");
     /// ```
+    #[inline]
     fn index(&self, index: usize) -> &V {
         assert!(index < self.core.len, "Index out of bounds.");
         unsafe { &self.core.entries.reference(index).value }
@@ -1220,6 +1223,7 @@ impl<K, V> IndexMut<usize> for OmniMap<K, V> {
     /// assert_eq!(map[0], "c");
     /// assert_eq!(map[1], "d");
     /// ```
+    #[inline]
     fn index_mut(&mut self, index: usize) -> &mut V {
         assert!(index < self.core.len, "Index out of bounds.");
         unsafe { &mut self.core.entries.reference_mut(index).value }
