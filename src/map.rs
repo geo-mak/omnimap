@@ -109,8 +109,8 @@ struct MapCore<K, V> {
     entries: AllocationPointer<Entry<K, V>>,
     index: MapIndex,
     cap: usize,
-    free: usize,
     len: usize,
+    free: usize,
 }
 
 impl<K, V> MapCore<K, V> {
@@ -121,8 +121,8 @@ impl<K, V> MapCore<K, V> {
             entries: AllocationPointer::new(),
             index: MapIndex::new(),
             cap: 0,
-            free: 0,
             len: 0,
+            free: 0,
         }
     }
 
@@ -334,6 +334,19 @@ impl<K, V> MapCore<K, V> {
         }
     }
 
+    /// Calculates the hash value for a key.
+    ///
+    /// > Note: The hash method of the `key` may panic.
+    #[inline]
+    fn make_hash<B>(key: &B) -> usize
+    where
+        B: ?Sized + Hash,
+    {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        hasher.finish() as usize
+    }
+
     /// Resets and rebuilds the index of the map according to the current entries and the capacity
     /// of the index.
     #[inline(always)]
@@ -371,6 +384,191 @@ impl<K, V> MapCore<K, V> {
                 i += 1;
             }
         }
+    }
+
+    /// Decrements the index of all occupied slots with index value greater than `after` by using
+    /// linear search.
+    ///
+    /// The search domain is `[0, capacity - 1]`.
+    const fn decrement_index_linear(&mut self, after: usize) {
+        let mut i = 0;
+        unsafe {
+            while i < self.cap {
+                if self.index.read_tag(i).is_occupied() {
+                    let index = self.index.entry_index_ref_mut(i);
+                    if *index > after {
+                        *index -= 1;
+                    }
+                }
+                i += 1
+            }
+        }
+    }
+
+    /// Decrements the index of occupied slots by using the hash value of each entry after `after`
+    /// to find its slot.
+    ///
+    /// The search domain starts from `after` as exclusive bound and ends with `inc_end` as
+    /// inclusive upper bound.
+    const fn decrement_index_hash(&mut self, after: usize, inc_end: usize) {
+        let mut i = after + 1;
+        unsafe {
+            while i <= inc_end {
+                let hash = self.entries.reference(i).hash;
+                let mut slot = hash % self.cap;
+
+                'probing: loop {
+                    if self.index.read_tag(slot).is_occupied() {
+                        let index = self.index.entry_index_ref_mut(slot);
+                        if *index == i {
+                            *index -= 1;
+                            break 'probing;
+                        }
+                    }
+
+                    slot = (slot + 1) % self.cap
+                }
+
+                i += 1;
+            }
+        }
+    }
+
+    /// Decrements the index of the occupied slots.
+    ///
+    /// Parameters:
+    ///  - `after`: the position to decrement after it.
+    ///  - `inc_end`: an **inclusive** upper bound for decrementing.
+    ///
+    /// Decrementing applies one of two methods to find the target slots.
+    ///
+    /// - If `inc_end - after` is greater than `capacity/2`, the search for the affected slots will
+    ///   be linear decrementing all encountered occupied slots in the index with value greater than
+    ///   `after` within the range `[0, capacity - 1]`.
+    ///
+    /// - If `inc_end - after` is less than or equal to `capacity/2`, the search for the target
+    ///   slots will be very specific using the hash value of the entries starting from offset
+    ///   `from + 1` to `inc_end` as an inclusive upper bound.
+    #[inline]
+    const fn decrement_index(&mut self, after: usize, inc_end: usize) {
+        let count = inc_end - after;
+        if count > self.cap / 2 {
+            self.decrement_index_linear(after);
+        } else {
+            // It has probing overhead, but it can skip large sequences.
+            self.decrement_index_hash(after, inc_end);
+        }
+    }
+
+    /// Finds the slot of the key in the index.
+    ///
+    /// If the key already exists, the returned `slot` is the index of its slot and `entry`
+    /// is the index of its entry.
+    ///
+    /// If the key doesn't exist, the returned `slot` is free for inserting and the value
+    /// of `entry` is an **invalid** index.
+    ///
+    /// # Safety
+    ///
+    /// Before using `entry`, its value must be checked first with `entry_exists()` method,
+    /// because its value can be an invalid index.
+    fn find<B>(&self, hash: usize, key: &B) -> FindResult
+    where
+        B: ?Sized + EqKey<K>,
+    {
+        unsafe {
+            // TODO: Maintaining power-of-two capacity when shrinking is the better option, even if more memory is reserved.
+            let mut slot = hash % self.cap;
+            loop {
+                match self.index.read_tag(slot) {
+                    Tag::Occupied => {
+                        let entry = self.index.read_entry_index(slot);
+                        if key.eq_key(&self.entries.reference(entry).key) {
+                            return FindResult { slot, entry };
+                        }
+                    }
+                    Tag::Empty => return FindResult::just_slot(slot),
+                    Tag::Deleted => {}
+                }
+                slot = (slot + 1) % self.cap;
+            }
+        }
+    }
+
+    /// Removes an entry by its `key` and returns its value.
+    ///
+    /// If `SHIFT` is `true`, this method will shift all entries after it to fill the gab, and
+    /// updates their slots.
+    ///
+    /// If `SHIFT` is `false`, this method will copy the last entry to the place of the removed
+    /// entry without shifting, and updates its slot.
+    ///
+    /// # Safety
+    ///
+    /// Map must not be empty when calling this method.
+    #[inline]
+    fn remove_entry<B, const SHIFT: bool>(&mut self, key: &B) -> Option<V>
+    where
+        K: Eq + Borrow<B>,
+        B: ?Sized + Hash + Eq,
+    {
+        let hash = Self::make_hash(key);
+
+        let result = self.find(hash, key);
+
+        if result.entry_exists() {
+            let index = result.entry;
+
+            self.len -= 1;
+            // Deleted entries are currently not recoverable so self.free remains unchanged.
+
+            unsafe {
+                self.index.store_tag(result.slot, Tag::Deleted);
+                let removed = self.entries.read_for_ownership(index).value;
+
+                if likely(index != self.len) {
+                    if SHIFT {
+                        // Call order matters.
+                        self.decrement_index(index, self.len);
+                        self.entries.shift_left(index, self.len - index);
+                    } else {
+                        let last = self.entries.reference(self.len);
+                        let swapped = self.find(last.hash, &last.key);
+                        self.index.store_entry_index(swapped.slot, index);
+                        self.entries.memmove_one(self.len, index);
+                    }
+                }
+
+                return Some(removed);
+            };
+        }
+
+        // Key was not found.
+        None
+    }
+
+    /// Returns an iterator over the current entries.
+    ///
+    /// This method makes it safe to iterate over the entries without worrying about the state of
+    /// the pointer and to trick the compiler to return empty iterator without type inference
+    /// issues when used with `map`.
+    fn iter_entries(&self) -> Iter<'_, Entry<K, V>> {
+        if self.len == 0 {
+            return [].iter();
+        };
+        unsafe { self.entries.as_slice(self.len).iter() }
+    }
+
+    /// Returns a mutable iterator over the entries in the `OmniMap`.
+    ///
+    /// This method makes it safe to iterate over the entries without worrying about the state of
+    /// the pointer and to trick the compiler to return empty iterator without type inference
+    /// issues when used with `map`.
+    fn iter_entries_mut(&mut self) -> IterMut<'_, Entry<K, V>> {
+        if self.len == 0 {
+            return [].iter_mut();
+        };
+        unsafe { self.entries.as_slice_mut(self.len).iter_mut() }
     }
 }
 
@@ -562,80 +760,6 @@ impl<K, V> OmniMap<K, V> {
         self.core.len == 0
     }
 
-    /// Decrements the index of all occupied slots with index value greater than `after` by using
-    /// linear search.
-    ///
-    /// The search domain is `[0, capacity - 1]`.
-    const fn decrement_index_linear(&mut self, after: usize) {
-        let mut i = 0;
-        unsafe {
-            while i < self.core.cap {
-                if self.core.index.read_tag(i).is_occupied() {
-                    let index = self.core.index.entry_index_ref_mut(i);
-                    if *index > after {
-                        *index -= 1;
-                    }
-                }
-                i += 1
-            }
-        }
-    }
-
-    /// Decrements the index of occupied slots by using the hash value of each entry after `after`
-    /// to find its slot.
-    ///
-    /// The search domain starts from `after` as exclusive bound and ends with `inc_end` as
-    /// inclusive upper bound.
-    const fn decrement_index_hash(&mut self, after: usize, inc_end: usize) {
-        let mut i = after + 1;
-        unsafe {
-            while i <= inc_end {
-                let hash = self.core.entries.reference(i).hash;
-                let mut slot = hash % self.core.cap;
-
-                'probing: loop {
-                    if self.core.index.read_tag(slot).is_occupied() {
-                        let index = self.core.index.entry_index_ref_mut(slot);
-                        if *index == i {
-                            *index -= 1;
-                            break 'probing;
-                        }
-                    }
-
-                    slot = (slot + 1) % self.core.cap
-                }
-
-                i += 1;
-            }
-        }
-    }
-
-    /// Decrements the index of the occupied slots.
-    ///
-    /// Parameters:
-    ///  - `after`: the position to decrement after it.
-    ///  - `inc_end`: an **inclusive** upper bound for decrementing.
-    ///
-    /// Decrementing applies one of two methods to find the target slots.
-    ///
-    /// - If `inc_end - after` is greater than `capacity/2`, the search for the affected slots will
-    ///   be linear decrementing all encountered occupied slots in the index with value greater than
-    ///   `after` within the range `[0, capacity - 1]`.
-    ///
-    /// - If `inc_end - after` is less than or equal to `capacity/2`, the search for the target
-    ///   slots will be very specific using the hash value of the entries starting from offset
-    ///   `from + 1` to `inc_end` as an inclusive upper bound.
-    #[inline]
-    const fn decrement_index(&mut self, after: usize, inc_end: usize) {
-        let count = inc_end - after;
-        if count > self.core.cap / 2 {
-            self.decrement_index_linear(after);
-        } else {
-            // It has probing overhead, but it can skip large sequences.
-            self.decrement_index_hash(after, inc_end);
-        }
-    }
-
     /// Reserves capacity for `additional` elements in advance.
     ///
     /// The resulting capacity will be equal to `self.core.capacity() + additional` or _more_ to
@@ -720,54 +844,6 @@ impl<K, V> OmniMap<K, V> {
     #[inline]
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), AllocError> {
         self.core.reserve_additional(additional, OnError::ReturnErr)
-    }
-
-    /// Calculates the hash value for a key.
-    ///
-    /// > Note: The hash method of the `key` may panic.
-    #[inline]
-    fn make_hash<B>(key: &B) -> usize
-    where
-        B: ?Sized + Hash,
-    {
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        hasher.finish() as usize
-    }
-
-    /// Finds the slot of the key in the index.
-    ///
-    /// If the key already exists, the returned `slot` is the index of its slot and `entry`
-    /// is the index of its entry.
-    ///
-    /// If the key doesn't exist, the returned `slot` is free for inserting and the value
-    /// of `entry` is an **invalid** index.
-    ///
-    /// # Safety
-    ///
-    /// Before using `entry`, its value must be checked first with `entry_exists()` method,
-    /// because its value can be an invalid index.
-    fn find<B>(&self, hash: usize, key: &B) -> FindResult
-    where
-        B: ?Sized + EqKey<K>,
-    {
-        unsafe {
-            // TODO: Maintaining power-of-two capacity when shrinking is the better option, even if more memory is reserved.
-            let mut slot = hash % self.core.cap;
-            loop {
-                match self.core.index.read_tag(slot) {
-                    Tag::Occupied => {
-                        let entry = self.core.index.read_entry_index(slot);
-                        if key.eq_key(&self.core.entries.reference(entry).key) {
-                            return FindResult { slot, entry };
-                        }
-                    }
-                    Tag::Empty => return FindResult::just_slot(slot),
-                    Tag::Deleted => {}
-                }
-                slot = (slot + 1) % self.core.cap;
-            }
-        }
     }
 
     /// Returns the first entry in the map.
@@ -978,30 +1054,6 @@ impl<K, V> OmniMap<K, V> {
         }
     }
 
-    /// Returns an iterator over the current entries.
-    ///
-    /// This method makes it safe to iterate over the entries without worrying about the state of
-    /// the pointer and to trick the compiler to return empty iterator without type inference
-    /// issues when used with `map`.
-    fn iter_entries(&self) -> Iter<'_, Entry<K, V>> {
-        if self.core.len == 0 {
-            return [].iter();
-        };
-        unsafe { self.core.entries.as_slice(self.core.len).iter() }
-    }
-
-    /// Returns a mutable iterator over the entries in the `OmniMap`.
-    ///
-    /// This method makes it safe to iterate over the entries without worrying about the state of
-    /// the pointer and to trick the compiler to return empty iterator without type inference
-    /// issues when used with `map`.
-    fn iter_entries_mut(&mut self) -> IterMut<'_, Entry<K, V>> {
-        if self.core.len == 0 {
-            return [].iter_mut();
-        };
-        unsafe { self.core.entries.as_slice_mut(self.core.len).iter_mut() }
-    }
-
     /// Returns an iterator over the entries in the `OmniMap`.
     ///
     /// # Examples
@@ -1018,7 +1070,9 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     #[inline]
     pub fn iter(&self) -> EntriesIterator<'_, K, V> {
-        self.iter_entries().map(|entry| (&entry.key, &entry.value))
+        self.core
+            .iter_entries()
+            .map(|entry| (&entry.key, &entry.value))
     }
 
     /// Returns a mutable iterator over the entries in the `OmniMap`.
@@ -1042,7 +1096,8 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     #[inline]
     pub fn iter_mut(&mut self) -> EntriesIteratorMut<'_, K, V> {
-        self.iter_entries_mut()
+        self.core
+            .iter_entries_mut()
             .map(|entry| (&entry.key, &mut entry.value))
     }
 
@@ -1062,7 +1117,7 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     #[inline]
     pub fn iter_keys(&self) -> impl Iterator<Item = &K> {
-        self.iter_entries().map(|entry| &entry.key)
+        self.core.iter_entries().map(|entry| &entry.key)
     }
 
     /// Returns an iterator over the values in the `OmniMap`.
@@ -1081,7 +1136,7 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     #[inline]
     pub fn iter_values(&self) -> impl Iterator<Item = &V> {
-        self.iter_entries().map(|entry| &entry.value)
+        self.core.iter_entries().map(|entry| &entry.value)
     }
 }
 
@@ -1322,9 +1377,9 @@ where
             self.core.reclaim_or_reserve();
         }
 
-        let hash = Self::make_hash(&key);
+        let hash = MapCore::<K, V>::make_hash(&key);
 
-        let result = self.find(hash, &key);
+        let result = self.core.find(hash, &key);
 
         if result.entry_exists() {
             let entry = unsafe { self.core.entries.reference_mut(result.entry) };
@@ -1391,9 +1446,9 @@ where
             return None;
         }
 
-        let hash = Self::make_hash(key);
+        let hash = MapCore::<K, V>::make_hash(&key);
 
-        let result = self.find(hash, key);
+        let result = self.core.find(hash, key);
 
         if result.entry_exists() {
             let value = unsafe { &self.core.entries.reference(result.entry).value };
@@ -1444,9 +1499,9 @@ where
             return None;
         }
 
-        let hash = Self::make_hash(key);
+        let hash = MapCore::<K, V>::make_hash(&key);
 
-        let result = self.find(hash, key);
+        let result = self.core.find(hash, key);
 
         if result.entry_exists() {
             let value = unsafe { &mut self.core.entries.reference_mut(result.entry).value };
@@ -1485,58 +1540,6 @@ where
         B: ?Sized + Hash + Eq,
     {
         self.get(key).is_some()
-    }
-
-    /// Removes an entry by its `key` and returns its value.
-    ///
-    /// If `SHIFT` is `true`, this method will shift all entries after it to fill the gab, and
-    /// updates their slots.
-    ///
-    /// If `SHIFT` is `false`, this method will copy the last entry to the place of the removed
-    /// entry without shifting, and updates its slot.
-    ///
-    /// # Safety
-    ///
-    /// Map must not be empty when calling this method.
-    #[inline]
-    fn remove_entry<B, const SHIFT: bool>(&mut self, key: &B) -> Option<V>
-    where
-        K: Borrow<B>,
-        B: ?Sized + Hash + Eq,
-    {
-        let hash = Self::make_hash(key);
-
-        let result = self.find(hash, key);
-
-        if result.entry_exists() {
-            let index = result.entry;
-
-            self.core.len -= 1;
-            // Deleted entries are currently not recoverable so self.free remains unchanged.
-
-            unsafe {
-                self.core.index.store_tag(result.slot, Tag::Deleted);
-                let removed = self.core.entries.read_for_ownership(index).value;
-
-                if likely(index != self.core.len) {
-                    if SHIFT {
-                        // Call order matters.
-                        self.decrement_index(index, self.core.len);
-                        self.core.entries.shift_left(index, self.core.len - index);
-                    } else {
-                        let last = self.core.entries.reference(self.core.len);
-                        let swapped = self.find(last.hash, &last.key);
-                        self.core.index.store_entry_index(swapped.slot, index);
-                        self.core.entries.memmove_one(self.core.len, index);
-                    }
-                }
-
-                return Some(removed);
-            };
-        }
-
-        // Key was not found.
-        None
     }
 
     /// Removes an entry by its `key`.
@@ -1592,7 +1595,7 @@ where
         if self.is_empty() {
             return None;
         }
-        self.remove_entry::<B, true>(key)
+        self.core.remove_entry::<B, true>(key)
     }
 
     /// Removes an entry by its `key`, and swaps its place with the last entry.
@@ -1642,7 +1645,7 @@ where
         if self.is_empty() {
             return None;
         }
-        self.remove_entry::<B, false>(key)
+        self.core.remove_entry::<B, false>(key)
     }
 
     /// Pops the first entry from the map.
@@ -1679,7 +1682,7 @@ where
         // SAFETY: The map is not empty, so an entry must exist.
         let entry_ref = unsafe { self.core.entries.reference_first() };
 
-        let result = self.find(entry_ref.hash, &entry_ref.key);
+        let result = self.core.find(entry_ref.hash, &entry_ref.key);
 
         debug_assert!(
             result.entry_exists(),
@@ -1693,7 +1696,7 @@ where
             let removed = self.core.entries.read_for_ownership(0);
 
             // Call order matters.
-            self.decrement_index(0, self.core.len);
+            self.core.decrement_index(0, self.core.len);
             self.core.entries.shift_left(0, self.core.len);
 
             Some((removed.key, removed.value))
@@ -1733,7 +1736,7 @@ where
 
         let entry_ref = unsafe { self.core.entries.reference(self.core.len - 1) };
 
-        let result = self.find(entry_ref.hash, &entry_ref.key);
+        let result = self.core.find(entry_ref.hash, &entry_ref.key);
 
         debug_assert!(
             result.entry_exists(),
@@ -1928,7 +1931,7 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{{")?;
         // This call is safe even if the map is not allocated.
-        for entry in self.iter_entries() {
+        for entry in self.core.iter_entries() {
             writeln!(f, "    {}: {}", entry.key, entry.value)?;
         }
         write!(f, "}}")
