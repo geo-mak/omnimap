@@ -343,12 +343,14 @@ where
         self.data.usable_capacity()
     }
 
+    /// Returns the the total allocated capacity including the _unusable_ capacity.
     #[inline(always)]
     pub const fn allocated_capacity(&self) -> usize {
         self.data.cap
     }
 
     /// Returns the remaining capacity.
+    #[inline(always)]
     pub const fn available_capacity(&self) -> usize {
         self.data.free
     }
