@@ -4,6 +4,7 @@ mod map_tests {
     use crate::index::Tag;
     use crate::map::{OmniMap, OmniMapIterator};
     use core::cell::RefCell;
+    use std::hash::Hash;
     use std::rc::Rc;
 
     #[test]
@@ -1051,6 +1052,37 @@ mod map_tests {
         let expected_str = r#"{1: "a", 2: "b", 3: "c"}"#;
 
         assert_eq!(debug_str, expected_str);
+    }
+
+    #[derive(PartialEq, Eq)]
+    struct PanicKey(u8);
+
+    impl Clone for PanicKey {
+        fn clone(&self) -> Self {
+            panic!("I panicked when cloning :)")
+        }
+    }
+
+    impl Hash for PanicKey {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.0.hash(state);
+        }
+    }
+
+    #[should_panic(expected = "I panicked when cloning :)")]
+    #[test]
+    fn test_map_panic_on_clone() {
+        let mut map = OmniMap::with_capacity(1);
+        map.insert(PanicKey(1), 1);
+        let _ = map.clone();
+    }
+
+    #[should_panic(expected = "I panicked when cloning :)")]
+    #[test]
+    fn test_map_panic_on_clone_compact() {
+        let mut map = OmniMap::with_capacity(1);
+        map.insert(PanicKey(1), 1);
+        let _ = map.clone_compact();
     }
 
     #[test]
