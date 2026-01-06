@@ -128,17 +128,13 @@ impl<K, V> MapCore<K, V> {
 
     /// Creates a new allocated instance according the to the specified capacity `cap`.
     ///
-    /// If `INIT` is true, the index will initialize its control bytes, otherwise the control bytes
-    /// will remain uninitialized.
+    /// Control bytes will not be initialized.
     ///
     /// Error handling depends on the error handling context `on_err`.
     ///
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
-    fn new_allocate<const INIT: bool>(
-        cap: usize,
-        on_err: OnError,
-    ) -> Result<MapCore<K, V>, AllocError> {
+    fn new_allocate_uninit(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, AllocError> {
         unsafe {
             let mut entries: AllocationPointer<Entry<K, V>> = AllocationPointer::new();
 
@@ -152,10 +148,6 @@ impl<K, V> MapCore<K, V> {
 
             error_guard.finish();
 
-            if INIT {
-                index.set_tags_empty(cap);
-            }
-
             let instance = MapCore {
                 index,
                 entries,
@@ -168,14 +160,19 @@ impl<K, V> MapCore<K, V> {
         }
     }
 
+    /// Creates a new allocated instance according the to the specified capacity `cap`.
+    ///
+    /// Control bytes will be initialized.
+    ///
+    /// Error handling depends on the error handling context `on_err`.
+    ///
+    /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
+    /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
     #[inline(always)]
-    const fn usable_capacity_from(cap: usize) -> usize {
-        (cap >> 3) * 7 + ((cap & 7) * 7 >> 3)
-    }
-
-    #[inline(always)]
-    const fn usable_capacity(&self) -> usize {
-        Self::usable_capacity_from(self.cap)
+    fn new_allocate_init(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, AllocError> {
+        let mut instance = Self::new_allocate_uninit(cap, on_err)?;
+        unsafe { instance.index.set_tags_empty(cap) };
+        Ok(instance)
     }
 
     /// Calls drop on initialized elements in entries.
@@ -200,6 +197,49 @@ impl<K, V> MapCore<K, V> {
             let layout = self.entries.make_layout_unchecked(self.cap);
             self.entries.deallocate(layout);
             self.index.deallocate(self.cap);
+        }
+    }
+
+    #[inline(always)]
+    const fn usable_capacity_from(cap: usize) -> usize {
+        (cap >> 3) * 7 + ((cap & 7) * 7 >> 3)
+    }
+
+    #[inline(always)]
+    const fn usable_capacity(&self) -> usize {
+        Self::usable_capacity_from(self.cap)
+    }
+
+    /// Returns the value that maintains the load factor for a given capacity `given`.
+    ///
+    /// This method doesn't check for arithmetic overflow.
+    #[must_use]
+    #[inline(always)]
+    const fn allocation_capacity_unchecked(given: usize) -> usize {
+        ((given + 1) * 8) / 7
+    }
+
+    /// Returns the value that maintains the load factor for a given capacity `given`.
+    ///
+    /// This method checks for arithmetic overflow.
+    #[inline(always)]
+    const fn allocation_capacity(given: usize, on_err: OnError) -> Result<usize, AllocError> {
+        if let Some(plus_one) = given.checked_add(1)
+            && let Some(mul_eight) = plus_one.checked_mul(8)
+        {
+            return Ok(mul_eight / 7);
+        }
+        Err(on_err.overflow())
+    }
+
+    /// Returns the next power of two of the current capacity.
+    ///
+    /// This method panics when overflow occurs.
+    #[inline(always)]
+    const fn capacity_next_power_of_two(&self) -> usize {
+        match Self::allocation_capacity(self.cap, OnError::Panic) {
+            Ok(alloc_cap) => alloc_cap.next_power_of_two(),
+            Err(_) => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -232,6 +272,54 @@ impl<K, V> MapCore<K, V> {
             }
         }
     }
+
+    fn make_clone(&self) -> Self
+    where
+        K: Clone,
+        V: Clone,
+    {
+        let mut instance = match Self::new_allocate_init(self.cap, OnError::Panic) {
+            Ok(instance) => instance,
+            Err(_) => unsafe { unreachable_unchecked() },
+        };
+
+        debug_assert!(instance.cap == self.cap);
+
+        unsafe {
+            // Unwind-safe. On panic, cloned items will be dropped.
+            instance.entries.clone_from(self.entries.ptr(), self.len);
+            instance.len = self.len;
+            instance.free = self.free;
+            instance.index.copy_from(&self.index, self.cap);
+        }
+
+        instance
+    }
+
+    fn make_compact_clone(&self) -> Self
+    where
+        K: Clone,
+        V: Clone,
+    {
+        let compact_cap = Self::allocation_capacity_unchecked(self.len);
+
+        let mut instance = match Self::new_allocate_init(compact_cap, OnError::Panic) {
+            Ok(instance) => instance,
+            Err(_) => unsafe { unreachable_unchecked() },
+        };
+
+        debug_assert!(instance.cap == compact_cap);
+
+        unsafe {
+            // Unwind-safe. On panic, cloned items will be dropped.
+            instance.entries.clone_from(self.entries.ptr(), self.len);
+            instance.len = self.len;
+            instance.free = 0;
+            instance.build_index();
+        }
+
+        instance
+    }
 }
 
 /// A key-value data structure with hash-based indexing and ordered storage of entries, providing
@@ -240,19 +328,19 @@ impl<K, V> MapCore<K, V> {
 /// It offers intuitive and ergonomic APIs inspired by hash maps and vectors, with the added
 /// benefit of predictable iteration order and stable indices.
 pub struct OmniMap<K, V> {
-    data: MapCore<K, V>,
+    core: MapCore<K, V>,
 }
 
 impl<K, V> Drop for OmniMap<K, V> {
     fn drop(&mut self) {
-        if self.data.cap == 0 {
+        if self.core.cap == 0 {
             return;
         }
 
         unsafe {
             // This call is safe even if the length is zero.
-            self.data.drop_initialized();
-            self.data.deallocate();
+            self.core.drop_initialized();
+            self.core.deallocate();
         }
     }
 }
@@ -280,7 +368,7 @@ where
     #[inline]
     pub const fn new() -> Self {
         OmniMap {
-            data: MapCore::new(),
+            core: MapCore::new(),
         }
     }
 
@@ -308,13 +396,13 @@ where
         }
 
         unsafe {
-            let cap = match Self::allocation_capacity(capacity, OnError::Panic) {
+            let cap = match MapCore::<K, V>::allocation_capacity(capacity, OnError::Panic) {
                 Ok(cap) => cap,
                 Err(_) => unreachable_unchecked(),
             };
 
-            match MapCore::new_allocate::<true>(cap, OnError::Panic) {
-                Ok(data) => OmniMap { data },
+            match MapCore::new_allocate_init(cap, OnError::Panic) {
+                Ok(data) => OmniMap { core: data },
                 Err(_) => unreachable_unchecked(),
             }
         }
@@ -340,19 +428,19 @@ where
     /// ```
     #[inline(always)]
     pub const fn capacity(&self) -> usize {
-        self.data.usable_capacity()
+        self.core.usable_capacity()
     }
 
     /// Returns the the total allocated capacity including the _unusable_ capacity.
     #[inline(always)]
     pub const fn allocated_capacity(&self) -> usize {
-        self.data.cap
+        self.core.cap
     }
 
     /// Returns the remaining capacity.
     #[inline(always)]
     pub const fn available_capacity(&self) -> usize {
-        self.data.free
+        self.core.free
     }
 
     /// Returns the number of entries in the `OmniMap`.
@@ -373,7 +461,7 @@ where
     /// ```
     #[inline(always)]
     pub const fn len(&self) -> usize {
-        self.data.len
+        self.core.len
     }
 
     /// Checks if the `OmniMap` is empty.
@@ -395,64 +483,7 @@ where
     /// ```
     #[inline(always)]
     pub const fn is_empty(&self) -> bool {
-        self.data.len == 0
-    }
-
-    /// Returns the value that maintains the load factor for a given capacity `given`.
-    ///
-    /// This method doesn't check for arithmetic overflow.
-    #[must_use]
-    #[inline(always)]
-    const fn allocation_capacity_unchecked(given: usize) -> usize {
-        ((given + 1) * 8) / 7
-    }
-
-    /// Returns the value that maintains the load factor for a given capacity `given`.
-    ///
-    /// This method checks for arithmetic overflow.
-    #[inline(always)]
-    const fn allocation_capacity(given: usize, on_err: OnError) -> Result<usize, AllocError> {
-        if let Some(plus_one) = given.checked_add(1)
-            && let Some(mul_eight) = plus_one.checked_mul(8)
-        {
-            return Ok(mul_eight / 7);
-        }
-        Err(on_err.overflow())
-    }
-
-    /// Returns the next power of two of the current capacity.
-    ///
-    /// This method panics when overflow occurs.
-    #[inline(always)]
-    const fn capacity_next_power_of_two(&self) -> usize {
-        match Self::allocation_capacity(self.data.cap, OnError::Panic) {
-            Ok(alloc_cap) => alloc_cap.next_power_of_two(),
-            Err(_) => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    /// Creates a new allocated instance according the to the specified capacity `cap`.
-    ///
-    /// If `INIT` is true, the index will initialize its control bytes, otherwise the control bytes
-    /// will remain uninitialized.
-    ///
-    /// Error handling depends on the error handling context `on_err`.
-    ///
-    /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
-    /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
-    ///
-    /// # Safety
-    ///
-    /// This method should be called **only** when the map is still unallocated.
-    #[inline(always)]
-    fn allocate<const INIT: bool>(
-        &mut self,
-        cap: usize,
-        on_err: OnError,
-    ) -> Result<(), AllocError> {
-        debug_assert_eq!(self.data.cap, 0);
-        self.data = MapCore::new_allocate::<INIT>(cap, on_err)?;
-        Ok(())
+        self.core.len == 0
     }
 
     /// Deallocates the entries and the index without calling `drop` on the initialized entries.
@@ -461,19 +492,19 @@ where
     ///
     /// Safety: Index and entries must be allocated before calling this method.
     fn deallocate(&mut self) {
-        debug_assert!(self.data.len == 0);
+        debug_assert!(self.core.len == 0);
         unsafe {
-            self.data.deallocate();
+            self.core.deallocate();
         }
-        self.data.cap = 0;
-        self.data.free = 0;
+        self.core.cap = 0;
+        self.core.free = 0;
     }
 
     #[inline]
     fn reallocate_empty(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
-        debug_assert!(self.data.len == 0);
-        let mut new_data = MapCore::<K, V>::new_allocate::<true>(new_cap, on_err)?;
-        mem::swap(&mut self.data, &mut new_data);
+        debug_assert!(self.core.len == 0);
+        let mut new_data = MapCore::<K, V>::new_allocate_init(new_cap, on_err)?;
+        mem::swap(&mut self.core, &mut new_data);
         unsafe { new_data.deallocate() }
         Ok(())
     }
@@ -488,13 +519,13 @@ where
     ///
     /// This method should be called only when the map is already allocated.
     fn reallocate_reindex(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
-        let mut new_data = MapCore::<K, V>::new_allocate::<true>(new_cap, on_err)?;
+        let mut new_data = MapCore::<K, V>::new_allocate_init(new_cap, on_err)?;
 
-        let current_len = self.data.len;
+        let current_len = self.core.len;
 
         unsafe {
             core::ptr::copy_nonoverlapping(
-                self.data.entries.ptr(),
+                self.core.entries.ptr(),
                 new_data.entries.ptr_mut(),
                 current_len,
             )
@@ -506,7 +537,7 @@ where
         // Hash value is pre-computed, so there is no risk of panic.
         new_data.build_index();
 
-        mem::swap(&mut self.data, &mut new_data);
+        mem::swap(&mut self.core, &mut new_data);
 
         unsafe { new_data.deallocate() }
 
@@ -520,9 +551,9 @@ where
     const fn decrement_index_linear(&mut self, after: usize) {
         let mut i = 0;
         unsafe {
-            while i < self.data.cap {
-                if self.data.index.read_tag(i).is_occupied() {
-                    let index = self.data.index.entry_index_ref_mut(i);
+            while i < self.core.cap {
+                if self.core.index.read_tag(i).is_occupied() {
+                    let index = self.core.index.entry_index_ref_mut(i);
                     if *index > after {
                         *index -= 1;
                     }
@@ -541,19 +572,19 @@ where
         let mut i = after + 1;
         unsafe {
             while i <= inc_end {
-                let hash = self.data.entries.reference(i).hash;
-                let mut slot = hash % self.data.cap;
+                let hash = self.core.entries.reference(i).hash;
+                let mut slot = hash % self.core.cap;
 
                 'probing: loop {
-                    if self.data.index.read_tag(slot).is_occupied() {
-                        let index = self.data.index.entry_index_ref_mut(slot);
+                    if self.core.index.read_tag(slot).is_occupied() {
+                        let index = self.core.index.entry_index_ref_mut(slot);
                         if *index == i {
                             *index -= 1;
                             break 'probing;
                         }
                     }
 
-                    slot = (slot + 1) % self.data.cap
+                    slot = (slot + 1) % self.core.cap
                 }
 
                 i += 1;
@@ -579,7 +610,7 @@ where
     #[inline]
     const fn decrement_index(&mut self, after: usize, inc_end: usize) {
         let count = inc_end - after;
-        if count > self.data.cap / 2 {
+        if count > self.core.cap / 2 {
             self.decrement_index_linear(after);
         } else {
             // It has probing overhead, but it can skip large sequences.
@@ -591,29 +622,29 @@ where
     /// of the index.
     #[inline(always)]
     fn reindex(&mut self) {
-        unsafe { self.data.index.set_tags_empty(self.data.cap) };
-        self.data.free = self.data.usable_capacity() - self.data.len;
-        self.data.build_index();
+        unsafe { self.core.index.set_tags_empty(self.core.cap) };
+        self.core.free = self.core.usable_capacity() - self.core.len;
+        self.core.build_index();
     }
 
     /// Reclaims deleted slots if suitable or reserves more capacity according to the load factor.
     ///
     /// This method panics when overflow occurs or when allocation fails.
     fn reclaim_or_reserve(&mut self) {
-        if self.data.len < self.data.cap >> 1 {
+        if self.core.len < self.core.cap >> 1 {
             // Reclaiming deleted slots without reallocation.
             self.reindex();
         } else {
             // Reallocation.
-            if likely(self.data.cap != 0) {
-                let new_cap = self.capacity_next_power_of_two();
+            if likely(self.core.cap != 0) {
+                let new_cap = self.core.capacity_next_power_of_two();
                 match self.reallocate_reindex(new_cap, OnError::Panic) {
                     Ok(_) => (),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
             } else {
-                match self.allocate::<true>(4, OnError::Panic) {
-                    Ok(_) => (),
+                match MapCore::new_allocate_init(4, OnError::Panic) {
+                    Ok(data) => self.core = data,
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
             }
@@ -625,15 +656,18 @@ where
     /// All internal calls are checked, with result depends on the error handling context `on_err`.
     fn reserve_additional(&mut self, additional: usize, on_err: OnError) -> Result<(), AllocError> {
         if likely(additional != 0) {
-            let extra_cap = Self::allocation_capacity(additional, on_err)?;
-            if likely(self.data.cap != 0) {
-                match self.data.cap.checked_add(extra_cap) {
+            let extra_cap = MapCore::<K, V>::allocation_capacity(additional, on_err)?;
+            if likely(self.core.cap != 0) {
+                match self.core.cap.checked_add(extra_cap) {
                     Some(new_cap) => self.reallocate_reindex(new_cap, on_err),
                     None => Err(on_err.overflow()),
                 }
             } else {
-                match self.allocate::<true>(extra_cap, on_err) {
-                    Ok(_) => Ok(()),
+                match MapCore::new_allocate_init(extra_cap, on_err) {
+                    Ok(data) => {
+                        self.core = data;
+                        Ok(())
+                    }
                     Err(e) => Err(e),
                 }
             }
@@ -759,19 +793,19 @@ where
     {
         unsafe {
             // TODO: Maintaining power-of-two capacity when shrinking is the better option, even if more memory is reserved.
-            let mut slot = hash % self.data.cap;
+            let mut slot = hash % self.core.cap;
             loop {
-                match self.data.index.read_tag(slot) {
+                match self.core.index.read_tag(slot) {
                     Tag::Occupied => {
-                        let entry = self.data.index.read_entry_index(slot);
-                        if key.eq_key(&self.data.entries.reference(entry).key) {
+                        let entry = self.core.index.read_entry_index(slot);
+                        if key.eq_key(&self.core.entries.reference(entry).key) {
                             return FindResult { slot, entry };
                         }
                     }
                     Tag::Empty => return FindResult::just_slot(slot),
                     Tag::Deleted => {}
                 }
-                slot = (slot + 1) % self.data.cap;
+                slot = (slot + 1) % self.core.cap;
             }
         }
     }
@@ -819,7 +853,7 @@ where
     /// ```
     #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
-        if unlikely(self.data.free == 0) {
+        if unlikely(self.core.free == 0) {
             self.reclaim_or_reserve();
         }
 
@@ -828,28 +862,28 @@ where
         let result = self.find(hash, &key);
 
         if result.entry_exists() {
-            let entry = unsafe { self.data.entries.reference_mut(result.entry) };
+            let entry = unsafe { self.core.entries.reference_mut(result.entry) };
             let old_val = mem::replace(&mut entry.value, value);
             return Some(old_val);
         };
 
         unsafe {
             debug_assert!(
-                self.data.index.read_tag(result.slot).is_empty(),
+                self.core.index.read_tag(result.slot).is_empty(),
                 "Logic error: attempt to overwrite a non-empty slot while inserting"
             );
 
-            self.data
+            self.core
                 .entries
-                .store(self.data.len, Entry::new(key, value, hash));
+                .store(self.core.len, Entry::new(key, value, hash));
 
-            self.data
+            self.core
                 .index
-                .store(result.slot, Tag::Occupied, self.data.len);
+                .store(result.slot, Tag::Occupied, self.core.len);
         }
 
-        self.data.len += 1;
-        self.data.free -= 1;
+        self.core.len += 1;
+        self.core.free -= 1;
 
         // Key was new and inserted.
         None
@@ -897,7 +931,7 @@ where
         let result = self.find(hash, key);
 
         if result.entry_exists() {
-            let value = unsafe { &self.data.entries.reference(result.entry).value };
+            let value = unsafe { &self.core.entries.reference(result.entry).value };
             return Some(value);
         }
 
@@ -950,7 +984,7 @@ where
         let result = self.find(hash, key);
 
         if result.entry_exists() {
-            let value = unsafe { &mut self.data.entries.reference_mut(result.entry).value };
+            let value = unsafe { &mut self.core.entries.reference_mut(result.entry).value };
             return Some(value);
         }
 
@@ -1019,7 +1053,7 @@ where
             return None;
         }
 
-        let entry = unsafe { self.data.entries.reference_first() };
+        let entry = unsafe { self.core.entries.reference_first() };
 
         Some((&entry.key, &entry.value))
     }
@@ -1055,7 +1089,7 @@ where
             return None;
         }
 
-        let entry = unsafe { self.data.entries.reference(self.data.len - 1) };
+        let entry = unsafe { self.core.entries.reference(self.core.len - 1) };
 
         Some((&entry.key, &entry.value))
     }
@@ -1084,23 +1118,23 @@ where
         if result.entry_exists() {
             let index = result.entry;
 
-            self.data.len -= 1;
+            self.core.len -= 1;
             // Deleted entries are currently not recoverable so self.free remains unchanged.
 
             unsafe {
-                self.data.index.store_tag(result.slot, Tag::Deleted);
-                let removed = self.data.entries.read_for_ownership(index).value;
+                self.core.index.store_tag(result.slot, Tag::Deleted);
+                let removed = self.core.entries.read_for_ownership(index).value;
 
-                if likely(index != self.data.len) {
+                if likely(index != self.core.len) {
                     if SHIFT {
                         // Call order matters.
-                        self.decrement_index(index, self.data.len);
-                        self.data.entries.shift_left(index, self.data.len - index);
+                        self.decrement_index(index, self.core.len);
+                        self.core.entries.shift_left(index, self.core.len - index);
                     } else {
-                        let last = self.data.entries.reference(self.data.len);
+                        let last = self.core.entries.reference(self.core.len);
                         let swapped = self.find(last.hash, &last.key);
-                        self.data.index.store_entry_index(swapped.slot, index);
-                        self.data.entries.memmove_one(self.data.len, index);
+                        self.core.index.store_entry_index(swapped.slot, index);
+                        self.core.entries.memmove_one(self.core.len, index);
                     }
                 }
 
@@ -1250,7 +1284,7 @@ where
         }
 
         // SAFETY: The map is not empty, so an entry must exist.
-        let entry_ref = unsafe { self.data.entries.reference_first() };
+        let entry_ref = unsafe { self.core.entries.reference_first() };
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
 
@@ -1259,15 +1293,15 @@ where
             "Logic error: entry exists, but it has no associated slot in the index"
         );
 
-        self.data.len -= 1;
+        self.core.len -= 1;
 
         unsafe {
-            self.data.index.store_tag(result.slot, Tag::Deleted);
-            let removed = self.data.entries.read_for_ownership(0);
+            self.core.index.store_tag(result.slot, Tag::Deleted);
+            let removed = self.core.entries.read_for_ownership(0);
 
             // Call order matters.
-            self.decrement_index(0, self.data.len);
-            self.data.entries.shift_left(0, self.data.len);
+            self.decrement_index(0, self.core.len);
+            self.core.entries.shift_left(0, self.core.len);
 
             Some((removed.key, removed.value))
         }
@@ -1304,7 +1338,7 @@ where
             return None;
         }
 
-        let entry_ref = unsafe { self.data.entries.reference(self.data.len - 1) };
+        let entry_ref = unsafe { self.core.entries.reference(self.core.len - 1) };
 
         let result = self.find(entry_ref.hash, &entry_ref.key);
 
@@ -1313,11 +1347,11 @@ where
             "Logic error: entry exists, but it has no associated slot in the index"
         );
 
-        self.data.len -= 1;
+        self.core.len -= 1;
 
         unsafe {
-            self.data.index.store_tag(result.slot, Tag::Deleted);
-            let removed = self.data.entries.read_for_ownership(self.data.len);
+            self.core.index.store_tag(result.slot, Tag::Deleted);
+            let removed = self.core.entries.read_for_ownership(self.core.len);
 
             Some((removed.key, removed.value))
         }
@@ -1350,7 +1384,7 @@ where
     /// assert_eq!(map.capacity(), 5);
     /// ```
     pub fn shrink_to(&mut self, capacity: usize) {
-        let current_len = self.data.len;
+        let current_len = self.core.len;
         let max_cap = max(current_len, capacity);
         // AKA self is allocated and layout can be unchecked.
         if max_cap < self.capacity() {
@@ -1358,7 +1392,7 @@ where
                 self.deallocate();
                 return;
             }
-            let new_cap = Self::allocation_capacity_unchecked(max_cap);
+            let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(max_cap);
             let result = if current_len == 0 {
                 self.reallocate_empty(new_cap, OnError::Panic)
             } else {
@@ -1398,13 +1432,13 @@ where
     /// ```
     #[inline]
     pub fn shrink_to_fit(&mut self) {
-        let current_len = self.data.len;
+        let current_len = self.core.len;
         if current_len < self.capacity() {
             if current_len == 0 {
                 self.deallocate();
                 return;
             }
-            let new_cap = Self::allocation_capacity_unchecked(current_len);
+            let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
             match self.reallocate_reindex(new_cap, OnError::Panic) {
                 Ok(_) => (),
                 Err(_) => unsafe { unreachable_unchecked() },
@@ -1441,13 +1475,13 @@ where
         }
 
         let protected_clear = OnDrop::set(self, |current| {
-            unsafe { current.data.index.set_tags_empty(current.data.cap) };
-            current.data.len = 0;
-            current.data.free = current.data.usable_capacity();
+            unsafe { current.core.index.set_tags_empty(current.core.cap) };
+            current.core.len = 0;
+            current.core.free = current.core.usable_capacity();
         });
 
         unsafe {
-            protected_clear.arg.data.drop_initialized();
+            protected_clear.arg.core.drop_initialized();
         }
     }
 
@@ -1457,10 +1491,10 @@ where
     /// the pointer and to trick the compiler to return empty iterator without type inference
     /// issues when used with `map`.
     fn iter_entries(&self) -> Iter<'_, Entry<K, V>> {
-        if self.data.len == 0 {
+        if self.core.len == 0 {
             return [].iter();
         };
-        unsafe { self.data.entries.as_slice(self.data.len).iter() }
+        unsafe { self.core.entries.as_slice(self.core.len).iter() }
     }
 
     /// Returns a mutable iterator over the entries in the `OmniMap`.
@@ -1469,10 +1503,10 @@ where
     /// the pointer and to trick the compiler to return empty iterator without type inference
     /// issues when used with `map`.
     fn iter_entries_mut(&mut self) -> IterMut<'_, Entry<K, V>> {
-        if self.data.len == 0 {
+        if self.core.len == 0 {
             return [].iter_mut();
         };
-        unsafe { self.data.entries.as_slice_mut(self.data.len).iter_mut() }
+        unsafe { self.core.entries.as_slice_mut(self.core.len).iter_mut() }
     }
 
     /// Returns an iterator over the entries in the `OmniMap`.
@@ -1581,8 +1615,8 @@ where
     #[inline]
     fn default() -> Self {
         unsafe {
-            match MapCore::new_allocate::<true>(Self::DEFAULT_CAPACITY, OnError::Panic) {
-                Ok(data) => OmniMap { data },
+            match MapCore::new_allocate_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
+                Ok(data) => Self { core: data },
                 Err(_) => unreachable_unchecked(),
             }
         }
@@ -1612,8 +1646,8 @@ impl<K, V> Index<usize> for OmniMap<K, V> {
     /// assert_eq!(map[1], "b");
     /// ```
     fn index(&self, index: usize) -> &V {
-        assert!(index < self.data.len, "Index out of bounds.");
-        unsafe { &self.data.entries.reference(index).value }
+        assert!(index < self.core.len, "Index out of bounds.");
+        unsafe { &self.core.entries.reference(index).value }
     }
 }
 
@@ -1641,8 +1675,8 @@ impl<K, V> IndexMut<usize> for OmniMap<K, V> {
     /// assert_eq!(map[1], "d");
     /// ```
     fn index_mut(&mut self, index: usize) -> &mut V {
-        assert!(index < self.data.len, "Index out of bounds.");
-        unsafe { &mut self.data.entries.reference_mut(index).value }
+        assert!(index < self.core.len, "Index out of bounds.");
+        unsafe { &mut self.core.entries.reference_mut(index).value }
     }
 }
 
@@ -1651,50 +1685,6 @@ where
     K: Eq + Hash + Clone,
     V: Clone,
 {
-    /// Makes new clone from the current instance with two modes: compact and normal.
-    ///
-    /// The map must be allocated and not empty before calling this method.
-    fn make_clone<const COMPACT: bool>(&self) -> OmniMap<K, V> {
-        let cap = if COMPACT {
-            // len + required reserves.
-            Self::allocation_capacity_unchecked(self.data.len)
-        } else {
-            self.data.cap
-        };
-
-        match MapCore::new_allocate::<COMPACT>(cap, OnError::Panic) {
-            Ok(data) => {
-                let mut instance = OmniMap { data };
-
-                debug_assert!(instance.data.cap == cap);
-
-                unsafe {
-                    // Unwind-safe. On panic, cloned items will be dropped.
-                    instance
-                        .data
-                        .entries
-                        .clone_from(self.data.entries.ptr(), self.data.len);
-                    instance.data.len = self.data.len;
-                    if COMPACT {
-                        instance.data.free -= instance.data.len;
-                        instance.data.build_index();
-                    } else {
-                        instance.data.free = self.data.free;
-                        instance
-                            .data
-                            .index
-                            .copy_from(&self.data.index, self.data.cap);
-                    }
-                }
-
-                instance
-            }
-
-            // Must diverge, nothing to handle.
-            Err(_) => unsafe { unreachable_unchecked() },
-        }
-    }
-
     /// Returns a compact clone of the current instance.
     ///
     /// This method creates a clone of the `OmniMap` where the capacity of the internal
@@ -1727,7 +1717,9 @@ where
         if self.is_empty() {
             return Self::new();
         }
-        self.make_clone::<true>()
+        Self {
+            core: self.core.make_compact_clone(),
+        }
     }
 }
 
@@ -1749,10 +1741,12 @@ where
     #[inline]
     fn clone(&self) -> Self {
         // Return an unallocated instance if the original is unallocated.
-        if self.data.cap == 0 {
+        if self.core.cap == 0 {
             return Self::new();
         }
-        self.make_clone::<false>()
+        Self {
+            core: self.core.make_clone(),
+        }
     }
 }
 
@@ -1762,7 +1756,7 @@ where
     V: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
-        if self.data.len != other.len() {
+        if self.core.len != other.len() {
             return false;
         }
         self.iter()
@@ -1897,14 +1891,14 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
     /// assert_eq!(iter.next(), None);
     /// ```
     fn into_iter(self) -> Self::IntoIter {
-        if self.data.len == 0 {
+        if self.core.len == 0 {
             return OmniMapIterator::new();
         }
 
         let mut iterator = OmniMapIterator {
             entries: AllocationPointer::new(),
-            cap: self.data.cap,
-            end: self.data.len,
+            cap: self.core.cap,
+            end: self.core.len,
             offset: 0,
         };
 
@@ -1913,8 +1907,8 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         // The fields that need deallocation are index and entries.
         // index must be deallocated here and entries shall be deallocated by the iterator.
         unsafe {
-            manual_self.data.index.deallocate(iterator.cap);
-            iterator.entries = manual_self.data.entries.duplicate();
+            manual_self.core.index.deallocate(iterator.cap);
+            iterator.entries = manual_self.core.entries.duplicate();
         }
 
         iterator
@@ -1953,22 +1947,22 @@ impl<K, V> OmniMap<K, V> {
     ///
     /// This method is used for testing purposes only and not available in release builds.
     pub(crate) fn debug_tag(&self, offset: usize) -> Tag {
-        debug_assert!(offset < self.data.cap);
-        unsafe { self.data.index.read_tag(offset) }
+        debug_assert!(offset < self.core.cap);
+        unsafe { self.core.index.read_tag(offset) }
     }
 
     /// Returns the slot's value at the specified `offset`.
     ///
     /// This method is used for testing purposes only and not available in release builds.
     pub(crate) fn debug_slot_value(&self, offset: usize) -> usize {
-        debug_assert!(offset < self.data.cap);
-        unsafe { self.data.index.read_entry_index(offset) }
+        debug_assert!(offset < self.core.cap);
+        unsafe { self.core.index.read_entry_index(offset) }
     }
 
     /// Returns the number of deleted slots.
     ///
     /// This method is used for testing purposes only and not available in release builds.
     pub(crate) fn debug_deleted(&self) -> usize {
-        self.data.usable_capacity() - (self.data.free + self.data.len)
+        self.core.usable_capacity() - (self.core.free + self.core.len)
     }
 }
