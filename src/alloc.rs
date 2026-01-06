@@ -306,7 +306,7 @@ impl<T> AllocationPointer<T> {
     /// Returns the base pointer as a pointer of type `C`.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn base_as<C>(&self) -> *const C {
+    pub(crate) const unsafe fn cast<C>(&self) -> *const C {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -316,7 +316,7 @@ impl<T> AllocationPointer<T> {
     /// Returns the base pointer as a mutable pointer of type `C`.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn base_mut_as<C>(&mut self) -> *mut C {
+    pub(crate) const unsafe fn cast_mut<C>(&mut self) -> *mut C {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 

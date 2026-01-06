@@ -152,7 +152,7 @@ impl MapIndex {
     ///   reallocating and using `Tag` enum to store tag's value.
     #[inline(always)]
     pub(crate) const unsafe fn read_tag(&self, offset: usize) -> Tag {
-        unsafe { self.pointer.base_as::<Tag>().add(offset).read() }
+        unsafe { self.pointer.cast::<Tag>().add(offset).read() }
     }
 
     /// Stores the control tag at the specified tag's `offset`.
@@ -175,7 +175,7 @@ impl MapIndex {
     ///   reallocating and using `Tag` enum to store tag's value.
     #[inline(always)]
     pub(crate) const unsafe fn tag_ref_mut(&mut self, offset: usize) -> &mut Tag {
-        unsafe { &mut *self.pointer.base_mut_as::<Tag>().add(offset) }
+        unsafe { &mut *self.pointer.cast_mut::<Tag>().add(offset) }
     }
 
     /// Reads and returns the slot's value according to the specified tag's `offset`.
@@ -185,7 +185,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn read_entry_index(&self, offset: usize) -> usize {
-        unsafe { self.pointer.base_as::<usize>().sub(offset + 1).read() }
+        unsafe { self.pointer.cast::<usize>().sub(offset + 1).read() }
     }
 
     /// Stores slot's value according to the specified tag's `offset`.
@@ -197,7 +197,7 @@ impl MapIndex {
     pub(crate) const unsafe fn store_entry_index(&mut self, offset: usize, value: usize) {
         unsafe {
             self.pointer
-                .base_mut_as::<usize>()
+                .cast_mut::<usize>()
                 .sub(offset + 1)
                 .write(value)
         }
@@ -210,7 +210,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn entry_index_ref_mut(&mut self, offset: usize) -> &mut usize {
-        unsafe { &mut *self.pointer.base_mut_as::<usize>().sub(offset + 1) }
+        unsafe { &mut *self.pointer.cast_mut::<usize>().sub(offset + 1) }
     }
 
     /// Stores the control tag and slot's value at the specified tag's `offset`.
