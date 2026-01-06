@@ -15,7 +15,7 @@ use crate::alloc::AllocationPointer;
 use crate::error::{AllocError, OnError};
 use crate::index::{MapIndex, Tag};
 use crate::opt::OnDrop;
-use crate::opt::branch_prediction::{likely, unlikely};
+use crate::opt::branch_hints::{likely, unlikely};
 
 pub trait EqKey<K: ?Sized> {
     fn eq_key(&self, key: &K) -> bool;

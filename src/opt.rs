@@ -1,7 +1,7 @@
 use core::mem::ManuallyDrop;
 
 /// Compiler hints to prioritize branches over others and improve branch prediction.
-pub(crate) mod branch_prediction {
+pub(crate) mod branch_hints {
     #[cold]
     const fn cold_line() {}
 
