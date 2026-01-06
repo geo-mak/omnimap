@@ -103,6 +103,16 @@ pub type EntriesIterator<'a, K, V> = Map<Iter<'a, Entry<K, V>>, fn(&Entry<K, V>)
 pub type EntriesIteratorMut<'a, K, V> =
     Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> (&K, &mut V)>;
 
+/// An immutable iterable view of the keys in the map.
+pub type KeysIterator<'a, K, V> = Map<Iter<'a, Entry<K, V>>, fn(&Entry<K, V>) -> &K>;
+
+/// An immutable iterable view of the values in the map.
+pub type ValuesIterator<'a, K, V> = Map<Iter<'a, Entry<K, V>>, fn(&Entry<K, V>) -> &V>;
+
+/// A mutable iterable view of the values in the map.
+pub type ValuesIteratorMut<'a, K, V> =
+    Map<IterMut<'a, Entry<K, V>>, fn(&mut Entry<K, V>) -> &mut V>;
+
 /// Stores the fields of the map and allocates/deallocates its pointers.
 /// It does't implement `Drop`. Deallocation is manual.
 struct MapCore<K, V> {
@@ -1116,7 +1126,7 @@ impl<K, V> OmniMap<K, V> {
     /// assert_eq!(map.iter_keys().collect::<Vec<&i32>>(), vec![&1, &2]);
     /// ```
     #[inline]
-    pub fn iter_keys(&self) -> impl Iterator<Item = &K> {
+    pub fn iter_keys(&self) -> KeysIterator<'_, K, V> {
         self.core.iter_entries().map(|entry| &entry.key)
     }
 
@@ -1135,8 +1145,27 @@ impl<K, V> OmniMap<K, V> {
     /// assert_eq!(map.iter_values().collect::<Vec<&&str>>(), vec![&"a", &"b"]);
     /// ```
     #[inline]
-    pub fn iter_values(&self) -> impl Iterator<Item = &V> {
+    pub fn iter_values(&self) -> ValuesIterator<'_, K, V> {
         self.core.iter_entries().map(|entry| &entry.value)
+    }
+
+    /// Returns a mutable iterator over the values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// map.insert(1, 1);
+    /// map.insert(2, 2);
+    ///
+    /// assert_eq!(map.iter_values_mut().collect::<Vec<&mut u8>>(), vec![&1, &2]);
+    /// ```
+    #[inline]
+    pub fn iter_values_mut(&mut self) -> ValuesIteratorMut<'_, K, V> {
+        self.core.iter_entries_mut().map(|entry| &mut entry.value)
     }
 }
 
