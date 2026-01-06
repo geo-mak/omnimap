@@ -175,6 +175,99 @@ impl<K, V> MapCore<K, V> {
         Ok(instance)
     }
 
+    #[inline]
+    fn reallocate_empty(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
+        debug_assert!(self.len == 0);
+        let mut new_data = MapCore::<K, V>::new_allocate_init(new_cap, on_err)?;
+        mem::swap(self, &mut new_data);
+        unsafe { new_data.deallocate() }
+        Ok(())
+    }
+
+    /// Shrinks or grows the allocated memory space to the specified `new_cap`.
+    ///
+    /// This method will also reset the index and rebuild it according to the new capacity.
+    ///
+    /// On error, the map's state will not be affected.
+    ///
+    /// # Safety
+    ///
+    /// This method should be called only when the map is already allocated.
+    fn reallocate_reindex(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
+        let mut new_data = Self::new_allocate_init(new_cap, on_err)?;
+
+        let current_len = self.len;
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                self.entries.ptr(),
+                new_data.entries.ptr_mut(),
+                current_len,
+            )
+        };
+
+        new_data.len = current_len;
+        new_data.free -= current_len;
+
+        // Hash value is pre-computed, so there is no risk of panic.
+        new_data.build_index();
+
+        mem::swap(self, &mut new_data);
+
+        unsafe { new_data.deallocate() }
+
+        Ok(())
+    }
+
+    /// Reclaims deleted slots if suitable or reserves more capacity according to the load factor.
+    ///
+    /// This method panics when overflow occurs or when allocation fails.
+    fn reclaim_or_reserve(&mut self) {
+        if self.len < self.cap >> 1 {
+            // Reclaiming deleted slots without reallocation.
+            self.reindex();
+        } else {
+            // Reallocation.
+            if likely(self.cap != 0) {
+                let new_cap = self.capacity_next_power_of_two();
+                match self.reallocate_reindex(new_cap, OnError::Panic) {
+                    Ok(_) => (),
+                    Err(_) => unsafe { unreachable_unchecked() },
+                }
+            } else {
+                match MapCore::new_allocate_init(4, OnError::Panic) {
+                    Ok(mut data) => mem::swap(self, &mut data),
+                    Err(_) => unsafe { unreachable_unchecked() },
+                }
+            }
+        }
+    }
+
+    /// Tries to reserve `additional` capacity.
+    ///
+    /// All internal calls are checked, with result depends on the error handling context `on_err`.
+    fn reserve_additional(&mut self, additional: usize, on_err: OnError) -> Result<(), AllocError> {
+        if likely(additional != 0) {
+            let extra_cap = MapCore::<K, V>::allocation_capacity(additional, on_err)?;
+            if likely(self.cap != 0) {
+                match self.cap.checked_add(extra_cap) {
+                    Some(new_cap) => self.reallocate_reindex(new_cap, on_err),
+                    None => Err(on_err.overflow()),
+                }
+            } else {
+                match Self::new_allocate_init(extra_cap, on_err) {
+                    Ok(mut data) => {
+                        mem::swap(self, &mut data);
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+        } else {
+            Ok(())
+        }
+    }
+
     /// Calls drop on initialized elements in entries.
     ///
     /// # Safety
@@ -198,6 +291,19 @@ impl<K, V> MapCore<K, V> {
             self.entries.deallocate(layout);
             self.index.deallocate(self.cap);
         }
+    }
+
+    /// Deallocates the entries and the index without calling `drop` on the initialized entries.
+    ///
+    /// fields `cap` and `free` will be reset to `0`.
+    ///
+    /// Safety: Index and entries must be allocated before calling this method.
+    #[inline]
+    unsafe fn deallocate_reset(&mut self) {
+        debug_assert!(self.len == 0);
+        unsafe { self.deallocate() };
+        self.cap = 0;
+        self.free = 0;
     }
 
     #[inline(always)]
@@ -241,6 +347,15 @@ impl<K, V> MapCore<K, V> {
             Ok(alloc_cap) => alloc_cap.next_power_of_two(),
             Err(_) => unsafe { unreachable_unchecked() },
         }
+    }
+
+    /// Resets and rebuilds the index of the map according to the current entries and the capacity
+    /// of the index.
+    #[inline(always)]
+    fn reindex(&mut self) {
+        unsafe { self.index.set_tags_empty(self.cap) };
+        self.free = self.usable_capacity() - self.len;
+        self.build_index();
     }
 
     /// Builds the index of the map according to the current entries and the capacity of the index.
@@ -486,64 +601,6 @@ where
         self.core.len == 0
     }
 
-    /// Deallocates the entries and the index without calling `drop` on the initialized entries.
-    ///
-    /// fields `cap` and `free` will be reset to `0`.
-    ///
-    /// Safety: Index and entries must be allocated before calling this method.
-    fn deallocate(&mut self) {
-        debug_assert!(self.core.len == 0);
-        unsafe {
-            self.core.deallocate();
-        }
-        self.core.cap = 0;
-        self.core.free = 0;
-    }
-
-    #[inline]
-    fn reallocate_empty(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
-        debug_assert!(self.core.len == 0);
-        let mut new_data = MapCore::<K, V>::new_allocate_init(new_cap, on_err)?;
-        mem::swap(&mut self.core, &mut new_data);
-        unsafe { new_data.deallocate() }
-        Ok(())
-    }
-
-    /// Shrinks or grows the allocated memory space to the specified `new_cap`.
-    ///
-    /// This method will also reset the index and rebuild it according to the new capacity.
-    ///
-    /// On error, the map's state will not be affected.
-    ///
-    /// # Safety
-    ///
-    /// This method should be called only when the map is already allocated.
-    fn reallocate_reindex(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
-        let mut new_data = MapCore::<K, V>::new_allocate_init(new_cap, on_err)?;
-
-        let current_len = self.core.len;
-
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                self.core.entries.ptr(),
-                new_data.entries.ptr_mut(),
-                current_len,
-            )
-        };
-
-        new_data.len = current_len;
-        new_data.free -= current_len;
-
-        // Hash value is pre-computed, so there is no risk of panic.
-        new_data.build_index();
-
-        mem::swap(&mut self.core, &mut new_data);
-
-        unsafe { new_data.deallocate() }
-
-        Ok(())
-    }
-
     /// Decrements the index of all occupied slots with index value greater than `after` by using
     /// linear search.
     ///
@@ -618,64 +675,6 @@ where
         }
     }
 
-    /// Resets and rebuilds the index of the map according to the current entries and the capacity
-    /// of the index.
-    #[inline(always)]
-    fn reindex(&mut self) {
-        unsafe { self.core.index.set_tags_empty(self.core.cap) };
-        self.core.free = self.core.usable_capacity() - self.core.len;
-        self.core.build_index();
-    }
-
-    /// Reclaims deleted slots if suitable or reserves more capacity according to the load factor.
-    ///
-    /// This method panics when overflow occurs or when allocation fails.
-    fn reclaim_or_reserve(&mut self) {
-        if self.core.len < self.core.cap >> 1 {
-            // Reclaiming deleted slots without reallocation.
-            self.reindex();
-        } else {
-            // Reallocation.
-            if likely(self.core.cap != 0) {
-                let new_cap = self.core.capacity_next_power_of_two();
-                match self.reallocate_reindex(new_cap, OnError::Panic) {
-                    Ok(_) => (),
-                    Err(_) => unsafe { unreachable_unchecked() },
-                }
-            } else {
-                match MapCore::new_allocate_init(4, OnError::Panic) {
-                    Ok(data) => self.core = data,
-                    Err(_) => unsafe { unreachable_unchecked() },
-                }
-            }
-        }
-    }
-
-    /// Tries to reserve `additional` capacity.
-    ///
-    /// All internal calls are checked, with result depends on the error handling context `on_err`.
-    fn reserve_additional(&mut self, additional: usize, on_err: OnError) -> Result<(), AllocError> {
-        if likely(additional != 0) {
-            let extra_cap = MapCore::<K, V>::allocation_capacity(additional, on_err)?;
-            if likely(self.core.cap != 0) {
-                match self.core.cap.checked_add(extra_cap) {
-                    Some(new_cap) => self.reallocate_reindex(new_cap, on_err),
-                    None => Err(on_err.overflow()),
-                }
-            } else {
-                match MapCore::new_allocate_init(extra_cap, on_err) {
-                    Ok(data) => {
-                        self.core = data;
-                        Ok(())
-                    }
-                    Err(e) => Err(e),
-                }
-            }
-        } else {
-            Ok(())
-        }
-    }
-
     /// Reserves capacity for `additional` elements in advance.
     ///
     /// The resulting capacity will be equal to `self.core.capacity() + additional` or _more_ to
@@ -709,7 +708,7 @@ where
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        match self.reserve_additional(additional, OnError::Panic) {
+        match self.core.reserve_additional(additional, OnError::Panic) {
             Ok(_) => (),
             // Hints the compiler that the error branch can be eliminated from the call chain.
             Err(_) => unsafe { unreachable_unchecked() },
@@ -759,7 +758,7 @@ where
     /// ```
     #[inline]
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), AllocError> {
-        self.reserve_additional(additional, OnError::ReturnErr)
+        self.core.reserve_additional(additional, OnError::ReturnErr)
     }
 
     /// Calculates the hash value for a key.
@@ -854,7 +853,7 @@ where
     #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if unlikely(self.core.free == 0) {
-            self.reclaim_or_reserve();
+            self.core.reclaim_or_reserve();
         }
 
         let hash = Self::make_hash(&key);
@@ -1389,14 +1388,14 @@ where
         // AKA self is allocated and layout can be unchecked.
         if max_cap < self.capacity() {
             if max_cap == 0 {
-                self.deallocate();
+                unsafe { self.core.deallocate_reset() };
                 return;
             }
             let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(max_cap);
             let result = if current_len == 0 {
-                self.reallocate_empty(new_cap, OnError::Panic)
+                self.core.reallocate_empty(new_cap, OnError::Panic)
             } else {
-                self.reallocate_reindex(new_cap, OnError::Panic)
+                self.core.reallocate_reindex(new_cap, OnError::Panic)
             };
             match result {
                 Ok(_) => (),
@@ -1435,11 +1434,11 @@ where
         let current_len = self.core.len;
         if current_len < self.capacity() {
             if current_len == 0 {
-                self.deallocate();
+                unsafe { self.core.deallocate_reset() };
                 return;
             }
             let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
-            match self.reallocate_reindex(new_cap, OnError::Panic) {
+            match self.core.reallocate_reindex(new_cap, OnError::Panic) {
                 Ok(_) => (),
                 Err(_) => unsafe { unreachable_unchecked() },
             }
