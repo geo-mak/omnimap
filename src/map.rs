@@ -500,6 +500,8 @@ where
 
         new_data.len = current_len;
         new_data.free -= current_len;
+
+        // Hash value is pre-computed, so there is no risk of panic.
         new_data.build_index();
 
         mem::swap(&mut self.data, &mut new_data);
