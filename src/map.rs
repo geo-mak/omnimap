@@ -372,54 +372,6 @@ impl<K, V> MapCore<K, V> {
             }
         }
     }
-
-    fn make_clone(&self) -> Self
-    where
-        K: Clone,
-        V: Clone,
-    {
-        let mut instance = match Self::new_allocate_init(self.cap, OnError::Panic) {
-            Ok(instance) => instance,
-            Err(_) => unsafe { unreachable_unchecked() },
-        };
-
-        debug_assert!(instance.cap == self.cap);
-
-        unsafe {
-            // Unwind-safe. On panic, cloned items will be dropped.
-            instance.entries.clone_from(self.entries.ptr(), self.len);
-            instance.len = self.len;
-            instance.free = self.free;
-            instance.index.copy_from(&self.index, self.cap);
-        }
-
-        instance
-    }
-
-    fn make_compact_clone(&self) -> Self
-    where
-        K: Clone,
-        V: Clone,
-    {
-        let compact_cap = Self::allocation_capacity_unchecked(self.len);
-
-        let mut instance = match Self::new_allocate_init(compact_cap, OnError::Panic) {
-            Ok(instance) => instance,
-            Err(_) => unsafe { unreachable_unchecked() },
-        };
-
-        debug_assert!(instance.cap == compact_cap);
-
-        unsafe {
-            // Unwind-safe. On panic, cloned items will be dropped.
-            instance.entries.clone_from(self.entries.ptr(), self.len);
-            instance.len = self.len;
-            instance.free = 0;
-            instance.build_index();
-        }
-
-        instance
-    }
 }
 
 /// A key-value data structure with hash-based indexing and ordered storage of entries, providing
@@ -1674,9 +1626,72 @@ impl<K, V> IndexMut<usize> for OmniMap<K, V> {
 
 impl<K, V> OmniMap<K, V>
 where
-    K: Eq + Hash + Clone,
+    K: Hash + Eq + Clone,
     V: Clone,
 {
+    fn make_clone(&self) -> Self {
+        let current_cap = self.core.cap;
+        let current_len = self.core.len;
+
+        let core = match MapCore::new_allocate_init(current_cap, OnError::Panic) {
+            Ok(instance) => instance,
+            Err(_) => unsafe { unreachable_unchecked() },
+        };
+
+        unsafe {
+            // On panic, instance's memory will be deallocated.
+            let mut instance = Self { core };
+
+            debug_assert!(instance.core.cap == self.core.cap);
+            debug_assert!(instance.core.len == 0);
+
+            // Unwind-safe. On panic, cloned items will be dropped.
+            instance
+                .core
+                .entries
+                .clone_from(self.core.entries.ptr(), current_len);
+
+            instance.core.len = current_len;
+
+            // Same index-state.
+            instance.core.free = self.core.free;
+            instance.core.index.copy_from(&self.core.index, current_cap);
+            instance
+        }
+    }
+
+    fn make_compact_clone(&self) -> Self {
+        let current_len = self.core.len;
+
+        let compact_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
+
+        let core = match MapCore::new_allocate_init(compact_cap, OnError::Panic) {
+            Ok(instance) => instance,
+            Err(_) => unsafe { unreachable_unchecked() },
+        };
+
+        unsafe {
+            // On panic, instance's memory will be deallocated.
+            let mut instance = Self { core };
+
+            debug_assert!(instance.core.cap == compact_cap);
+            debug_assert!(instance.core.len == 0);
+
+            // Unwind-safe. On panic, cloned items will be dropped.
+            instance
+                .core
+                .entries
+                .clone_from(self.core.entries.ptr(), current_len);
+
+            instance.core.len = current_len;
+
+            // New index with usable cap set to len.
+            instance.core.free = 0;
+            instance.core.build_index();
+            instance
+        }
+    }
+
     /// Returns a compact clone of the current instance.
     ///
     /// This method creates a clone of the `OmniMap` where the capacity of the internal
@@ -1709,9 +1724,7 @@ where
         if self.is_empty() {
             return Self::new();
         }
-        Self {
-            core: self.core.make_compact_clone(),
-        }
+        self.make_compact_clone()
     }
 }
 
@@ -1736,9 +1749,7 @@ where
         if self.core.cap == 0 {
             return Self::new();
         }
-        Self {
-            core: self.core.make_clone(),
-        }
+        self.make_clone()
     }
 }
 
