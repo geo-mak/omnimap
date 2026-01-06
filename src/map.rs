@@ -397,11 +397,36 @@ impl<K, V> Drop for OmniMap<K, V> {
     }
 }
 
+impl<K, V> Default for OmniMap<K, V> {
+    /// Creates a new `OmniMap` with the default capacity.
+    /// The default capacity is set to `16`, with 14 as useable capacity.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic when allocation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let map: OmniMap<i32, &str> = OmniMap::default();
+    ///
+    /// assert_eq!(map.capacity(), 14);
+    /// ```
+    #[inline]
+    fn default() -> Self {
+        unsafe {
+            match MapCore::new_allocate_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
+                Ok(data) => Self { core: data },
+                Err(_) => unreachable_unchecked(),
+            }
+        }
+    }
+}
+
 // Core implementation
-impl<K, V> OmniMap<K, V>
-where
-    K: Eq + Hash,
-{
+impl<K, V> OmniMap<K, V> {
     const DEFAULT_CAPACITY: usize = 16;
 
     /// Returns a new `OmniMap` without allocated capacity.
@@ -454,7 +479,7 @@ where
             };
 
             match MapCore::new_allocate_init(cap, OnError::Panic) {
-                Ok(data) => OmniMap { core: data },
+                Ok(core) => OmniMap { core },
                 Err(_) => unreachable_unchecked(),
             }
         }
@@ -746,6 +771,511 @@ where
         }
     }
 
+    /// Returns the first entry in the map.
+    ///
+    /// # Returns
+    ///
+    /// - `Some((&key, &value))`: If the map is not empty.
+    ///
+    /// - `None`: If the map is empty.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(1).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    /// map.insert(3, "c");
+    ///
+    /// assert_eq!(map.first(), Some((&1, &"a")));
+    /// ```
+    #[must_use]
+    #[inline]
+    pub const fn first(&self) -> Option<(&K, &V)> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let entry = unsafe { self.core.entries.reference_first() };
+
+        Some((&entry.key, &entry.value))
+    }
+
+    /// Returns the last entry in the map.
+    ///
+    /// # Returns
+    ///
+    /// - `Some((&key, &value))`: If the map is not empty.
+    ///
+    /// - `None`: If the map is empty.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(1).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    /// map.insert(3, "c");
+    ///
+    /// assert_eq!(map.last(), Some((&3, &"c")));
+    /// ```
+    #[must_use]
+    #[inline]
+    pub const fn last(&self) -> Option<(&K, &V)> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let entry = unsafe { self.core.entries.reference(self.core.len - 1) };
+
+        Some((&entry.key, &entry.value))
+    }
+
+    /// Shrinks the capacity of the `OmniMap` to the specified capacity.
+    /// In order to take effect, `capacity` must be less than the current capacity
+    /// and greater than or equal to the number of elements in the map.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(n) on average.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::with_capacity(10);
+    ///
+    /// assert_eq!(map.capacity(), 10);
+    ///
+    /// // Insert some elements
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    ///
+    /// // Shrink the capacity to 3
+    /// map.shrink_to(5);
+    ///
+    /// assert_eq!(map.capacity(), 5);
+    /// ```
+    pub fn shrink_to(&mut self, capacity: usize) {
+        let current_len = self.core.len;
+        let max_cap = max(current_len, capacity);
+        // AKA self is allocated and layout can be unchecked.
+        if max_cap < self.capacity() {
+            if max_cap == 0 {
+                unsafe {
+                    self.core.deallocate();
+                    self.core.cap = 0;
+                    self.core.free = 0;
+                };
+                return;
+            }
+            let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(max_cap);
+            let result = if current_len == 0 {
+                self.core.reallocate_empty(new_cap, OnError::Panic)
+            } else {
+                self.core.reallocate_reindex(new_cap, OnError::Panic)
+            };
+            match result {
+                Ok(_) => (),
+                Err(_) => unsafe { unreachable_unchecked() },
+            }
+        }
+    }
+
+    /// Shrinks the capacity of the `OmniMap` to fit its current length.
+    /// If the capacity is equal to the number of elements in the map, this method will do nothing.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(n) on average.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::with_capacity(10);
+    ///
+    /// assert_eq!(map.capacity(), 10);
+    ///
+    /// // Insert some elements
+    ///  map.insert(1, "a");
+    ///  map.insert(2, "b");
+    ///
+    /// // Shrink the capacity to fit the current length
+    /// map.shrink_to_fit();
+    ///
+    /// assert_eq!(map.capacity(), 2);
+    /// ```
+    #[inline]
+    pub fn shrink_to_fit(&mut self) {
+        let current_len = self.core.len;
+        if current_len < self.capacity() {
+            if current_len == 0 {
+                unsafe {
+                    self.core.deallocate();
+                    self.core.cap = 0;
+                    self.core.free = 0;
+                };
+                return;
+            }
+            let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
+            match self.core.reallocate_reindex(new_cap, OnError::Panic) {
+                Ok(_) => (),
+                Err(_) => unsafe { unreachable_unchecked() },
+            }
+        }
+    }
+
+    /// Clears the map, removing all entries.
+    /// The capacity of the map remains unchanged.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(n).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    ///
+    /// assert_eq!(map.len(), 2);
+    ///
+    /// map.clear();
+    ///
+    /// assert_eq!(map.len(), 0);
+    /// ```
+    #[inline]
+    pub fn clear(&mut self) {
+        if self.is_empty() {
+            return;
+        }
+
+        let protected_clear = OnDrop::set(self, |current| {
+            unsafe { current.core.index.set_tags_empty(current.core.cap) };
+            current.core.len = 0;
+            current.core.free = current.core.usable_capacity();
+        });
+
+        unsafe {
+            protected_clear.arg.core.drop_initialized();
+        }
+    }
+
+    /// Returns an iterator over the current entries.
+    ///
+    /// This method makes it safe to iterate over the entries without worrying about the state of
+    /// the pointer and to trick the compiler to return empty iterator without type inference
+    /// issues when used with `map`.
+    fn iter_entries(&self) -> Iter<'_, Entry<K, V>> {
+        if self.core.len == 0 {
+            return [].iter();
+        };
+        unsafe { self.core.entries.as_slice(self.core.len).iter() }
+    }
+
+    /// Returns a mutable iterator over the entries in the `OmniMap`.
+    ///
+    /// This method makes it safe to iterate over the entries without worrying about the state of
+    /// the pointer and to trick the compiler to return empty iterator without type inference
+    /// issues when used with `map`.
+    fn iter_entries_mut(&mut self) -> IterMut<'_, Entry<K, V>> {
+        if self.core.len == 0 {
+            return [].iter_mut();
+        };
+        unsafe { self.core.entries.as_slice_mut(self.core.len).iter_mut() }
+    }
+
+    /// Returns an iterator over the entries in the `OmniMap`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    ///
+    /// assert_eq!(map.iter().collect::<Vec<(&i32, &&str)>>(), vec![(&1, &"a"), (&2, &"b")]);
+    /// ```
+    #[inline]
+    pub fn iter(&self) -> EntriesIterator<'_, K, V> {
+        self.iter_entries().map(|entry| (&entry.key, &entry.value))
+    }
+
+    /// Returns a mutable iterator over the entries in the `OmniMap`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    ///
+    /// for (key, value) in map.iter_mut() {
+    ///     *value = "c";
+    /// }
+    ///
+    /// assert_eq!(map.get(&1), Some(&"c"));
+    /// assert_eq!(map.get(&2), Some(&"c"));
+    /// ```
+    #[inline]
+    pub fn iter_mut(&mut self) -> EntriesIteratorMut<'_, K, V> {
+        self.iter_entries_mut()
+            .map(|entry| (&entry.key, &mut entry.value))
+    }
+
+    /// Returns an iterator over the keys in the `OmniMap`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    ///
+    /// assert_eq!(map.iter_keys().collect::<Vec<&i32>>(), vec![&1, &2]);
+    /// ```
+    #[inline]
+    pub fn iter_keys(&self) -> impl Iterator<Item = &K> {
+        self.iter_entries().map(|entry| &entry.key)
+    }
+
+    /// Returns an iterator over the values in the `OmniMap`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    ///
+    /// assert_eq!(map.iter_values().collect::<Vec<&&str>>(), vec![&"a", &"b"]);
+    /// ```
+    #[inline]
+    pub fn iter_values(&self) -> impl Iterator<Item = &V> {
+        self.iter_entries().map(|entry| &entry.value)
+    }
+}
+
+impl<K, V> Index<usize> for OmniMap<K, V> {
+    type Output = V;
+
+    /// Returns immutable reference to the value at the specified `index`.
+    ///
+    /// # Panics
+    ///
+    /// If the given index is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    ///
+    /// assert_eq!(map[0], "a");
+    /// assert_eq!(map[1], "b");
+    /// ```
+    fn index(&self, index: usize) -> &V {
+        assert!(index < self.core.len, "Index out of bounds.");
+        unsafe { &self.core.entries.reference(index).value }
+    }
+}
+
+impl<K, V> IndexMut<usize> for OmniMap<K, V> {
+    /// Returns mutable reference to the value at the specified `index`.
+    ///
+    /// # Panics
+    ///
+    /// If the given index is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::new();
+    ///
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    ///
+    /// map[0] = "c";
+    /// map[1] = "d";
+    ///
+    /// assert_eq!(map[0], "c");
+    /// assert_eq!(map[1], "d");
+    /// ```
+    fn index_mut(&mut self, index: usize) -> &mut V {
+        assert!(index < self.core.len, "Index out of bounds.");
+        unsafe { &mut self.core.entries.reference_mut(index).value }
+    }
+}
+
+impl<K, V> OmniMap<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
+    fn make_clone(&self) -> Self {
+        let current_cap = self.core.cap;
+        let current_len = self.core.len;
+
+        let core = match MapCore::new_allocate_init(current_cap, OnError::Panic) {
+            Ok(instance) => instance,
+            Err(_) => unsafe { unreachable_unchecked() },
+        };
+
+        unsafe {
+            // On panic, instance's memory will be deallocated.
+            let mut instance = Self { core };
+
+            debug_assert!(instance.core.cap == self.core.cap);
+            debug_assert!(instance.core.len == 0);
+
+            // Unwind-safe. On panic, cloned items will be dropped.
+            instance
+                .core
+                .entries
+                .clone_from(self.core.entries.ptr(), current_len);
+
+            instance.core.len = current_len;
+
+            // Same index-state.
+            instance.core.free = self.core.free;
+            instance.core.index.copy_from(&self.core.index, current_cap);
+            instance
+        }
+    }
+
+    fn make_compact_clone(&self) -> Self {
+        let current_len = self.core.len;
+
+        let compact_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
+
+        let core = match MapCore::new_allocate_init(compact_cap, OnError::Panic) {
+            Ok(instance) => instance,
+            Err(_) => unsafe { unreachable_unchecked() },
+        };
+
+        unsafe {
+            // On panic, instance's memory will be deallocated.
+            let mut instance = Self { core };
+
+            debug_assert!(instance.core.cap == compact_cap);
+            debug_assert!(instance.core.len == 0);
+
+            // Unwind-safe. On panic, cloned items will be dropped.
+            instance
+                .core
+                .entries
+                .clone_from(self.core.entries.ptr(), current_len);
+
+            instance.core.len = current_len;
+
+            // New index with usable cap set to len.
+            instance.core.free = 0;
+            instance.core.build_index();
+            instance
+        }
+    }
+
+    /// Returns a compact clone of the current instance.
+    ///
+    /// This method creates a clone of the `OmniMap` where the capacity of the internal
+    /// storage is reduced to fit the current number of elements. This can help reduce
+    /// memory usage if the map has a lot of unused capacity.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic when allocation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::OmniMap;
+    ///
+    /// let mut map = OmniMap::with_capacity(5);
+    /// map.insert(1, "a");
+    /// map.insert(2, "b");
+    ///
+    /// let compact_clone = map.clone_compact();
+    ///
+    /// assert_eq!(compact_clone.len(), map.len());
+    /// assert_eq!(compact_clone.capacity(), map.len());
+    ///
+    /// assert_eq!(compact_clone.get(&1), Some(&"a"));
+    /// assert_eq!(compact_clone.get(&2), Some(&"b"));
+    /// ```
+    #[inline]
+    pub fn clone_compact(&self) -> Self {
+        if self.is_empty() {
+            return Self::new();
+        }
+        self.make_compact_clone()
+    }
+}
+
+impl<K, V> Clone for OmniMap<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
+    /// Creates an identical clone of the current instance without changing the capacity.
+    /// The new map will have the same capacity as the original regardless of the number of
+    /// elements.
+    ///
+    /// If capacity is a concern, use the `clone_compact` method to create a clone with a capacity
+    /// equal to the number of elements.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic when allocation fails.
+    #[inline]
+    fn clone(&self) -> Self {
+        // Return an unallocated instance if the original is unallocated.
+        if self.core.cap == 0 {
+            return Self::new();
+        }
+        self.make_clone()
+    }
+}
+
+impl<K, V> OmniMap<K, V>
+where
+    K: Hash + Eq,
+{
     /// Inserts a key-value pair into the map.
     /// If the map did not have this key present, `None` is returned.
     /// If the map did have this key present, the value is updated, and the old value is returned.
@@ -956,78 +1486,6 @@ where
         B: ?Sized + Hash + Eq,
     {
         self.get(key).is_some()
-    }
-
-    /// Returns the first entry in the map.
-    ///
-    /// # Returns
-    ///
-    /// - `Some((&key, &value))`: If the map is not empty.
-    ///
-    /// - `None`: If the map is empty.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    /// map.insert(3, "c");
-    ///
-    /// assert_eq!(map.first(), Some((&1, &"a")));
-    /// ```
-    #[must_use]
-    #[inline]
-    pub const fn first(&self) -> Option<(&K, &V)> {
-        if self.is_empty() {
-            return None;
-        }
-
-        let entry = unsafe { self.core.entries.reference_first() };
-
-        Some((&entry.key, &entry.value))
-    }
-
-    /// Returns the last entry in the map.
-    ///
-    /// # Returns
-    ///
-    /// - `Some((&key, &value))`: If the map is not empty.
-    ///
-    /// - `None`: If the map is empty.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    /// map.insert(3, "c");
-    ///
-    /// assert_eq!(map.last(), Some((&3, &"c")));
-    /// ```
-    #[must_use]
-    #[inline]
-    pub const fn last(&self) -> Option<(&K, &V)> {
-        if self.is_empty() {
-            return None;
-        }
-
-        let entry = unsafe { self.core.entries.reference(self.core.len - 1) };
-
-        Some((&entry.key, &entry.value))
     }
 
     /// Removes an entry by its `key` and returns its value.
@@ -1292,465 +1750,6 @@ where
             Some((removed.key, removed.value))
         }
     }
-
-    /// Shrinks the capacity of the `OmniMap` to the specified capacity.
-    /// In order to take effect, `capacity` must be less than the current capacity
-    /// and greater than or equal to the number of elements in the map.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) on average.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::with_capacity(10);
-    ///
-    /// assert_eq!(map.capacity(), 10);
-    ///
-    /// // Insert some elements
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    ///
-    /// // Shrink the capacity to 3
-    /// map.shrink_to(5);
-    ///
-    /// assert_eq!(map.capacity(), 5);
-    /// ```
-    pub fn shrink_to(&mut self, capacity: usize) {
-        let current_len = self.core.len;
-        let max_cap = max(current_len, capacity);
-        // AKA self is allocated and layout can be unchecked.
-        if max_cap < self.capacity() {
-            if max_cap == 0 {
-                unsafe {
-                    self.core.deallocate();
-                    self.core.cap = 0;
-                    self.core.free = 0;
-                };
-                return;
-            }
-            let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(max_cap);
-            let result = if current_len == 0 {
-                self.core.reallocate_empty(new_cap, OnError::Panic)
-            } else {
-                self.core.reallocate_reindex(new_cap, OnError::Panic)
-            };
-            match result {
-                Ok(_) => (),
-                Err(_) => unsafe { unreachable_unchecked() },
-            }
-        }
-    }
-
-    /// Shrinks the capacity of the `OmniMap` to fit its current length.
-    /// If the capacity is equal to the number of elements in the map, this method will do nothing.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) on average.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::with_capacity(10);
-    ///
-    /// assert_eq!(map.capacity(), 10);
-    ///
-    /// // Insert some elements
-    ///  map.insert(1, "a");
-    ///  map.insert(2, "b");
-    ///
-    /// // Shrink the capacity to fit the current length
-    /// map.shrink_to_fit();
-    ///
-    /// assert_eq!(map.capacity(), 2);
-    /// ```
-    #[inline]
-    pub fn shrink_to_fit(&mut self) {
-        let current_len = self.core.len;
-        if current_len < self.capacity() {
-            if current_len == 0 {
-                unsafe {
-                    self.core.deallocate();
-                    self.core.cap = 0;
-                    self.core.free = 0;
-                };
-                return;
-            }
-            let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
-            match self.core.reallocate_reindex(new_cap, OnError::Panic) {
-                Ok(_) => (),
-                Err(_) => unsafe { unreachable_unchecked() },
-            }
-        }
-    }
-
-    /// Clears the map, removing all entries.
-    /// The capacity of the map remains unchanged.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    ///
-    /// assert_eq!(map.len(), 2);
-    ///
-    /// map.clear();
-    ///
-    /// assert_eq!(map.len(), 0);
-    /// ```
-    #[inline]
-    pub fn clear(&mut self) {
-        if self.is_empty() {
-            return;
-        }
-
-        let protected_clear = OnDrop::set(self, |current| {
-            unsafe { current.core.index.set_tags_empty(current.core.cap) };
-            current.core.len = 0;
-            current.core.free = current.core.usable_capacity();
-        });
-
-        unsafe {
-            protected_clear.arg.core.drop_initialized();
-        }
-    }
-
-    /// Returns an iterator over the current entries.
-    ///
-    /// This method makes it safe to iterate over the entries without worrying about the state of
-    /// the pointer and to trick the compiler to return empty iterator without type inference
-    /// issues when used with `map`.
-    fn iter_entries(&self) -> Iter<'_, Entry<K, V>> {
-        if self.core.len == 0 {
-            return [].iter();
-        };
-        unsafe { self.core.entries.as_slice(self.core.len).iter() }
-    }
-
-    /// Returns a mutable iterator over the entries in the `OmniMap`.
-    ///
-    /// This method makes it safe to iterate over the entries without worrying about the state of
-    /// the pointer and to trick the compiler to return empty iterator without type inference
-    /// issues when used with `map`.
-    fn iter_entries_mut(&mut self) -> IterMut<'_, Entry<K, V>> {
-        if self.core.len == 0 {
-            return [].iter_mut();
-        };
-        unsafe { self.core.entries.as_slice_mut(self.core.len).iter_mut() }
-    }
-
-    /// Returns an iterator over the entries in the `OmniMap`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    ///
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    ///
-    /// assert_eq!(map.iter().collect::<Vec<(&i32, &&str)>>(), vec![(&1, &"a"), (&2, &"b")]);
-    /// ```
-    #[inline]
-    pub fn iter(&self) -> EntriesIterator<'_, K, V> {
-        self.iter_entries().map(|entry| (&entry.key, &entry.value))
-    }
-
-    /// Returns a mutable iterator over the entries in the `OmniMap`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    ///
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    ///
-    /// for (key, value) in map.iter_mut() {
-    ///     *value = "c";
-    /// }
-    ///
-    /// assert_eq!(map.get(&1), Some(&"c"));
-    /// assert_eq!(map.get(&2), Some(&"c"));
-    /// ```
-    #[inline]
-    pub fn iter_mut(&mut self) -> EntriesIteratorMut<'_, K, V> {
-        self.iter_entries_mut()
-            .map(|entry| (&entry.key, &mut entry.value))
-    }
-
-    /// Returns an iterator over the keys in the `OmniMap`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    ///
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    ///
-    /// assert_eq!(map.iter_keys().collect::<Vec<&i32>>(), vec![&1, &2]);
-    /// ```
-    #[inline]
-    pub fn iter_keys(&self) -> impl Iterator<Item = &K> {
-        self.iter_entries().map(|entry| &entry.key)
-    }
-
-    /// Returns an iterator over the values in the `OmniMap`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    ///
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    ///
-    /// assert_eq!(map.iter_values().collect::<Vec<&&str>>(), vec![&"a", &"b"]);
-    /// ```
-    #[inline]
-    pub fn iter_values(&self) -> impl Iterator<Item = &V> {
-        self.iter_entries().map(|entry| &entry.value)
-    }
-}
-
-impl<K, V> Default for OmniMap<K, V>
-where
-    K: Eq + Hash,
-{
-    /// Creates a new `OmniMap` with the default capacity.
-    /// The default capacity is set to `16`, with 14 as useable capacity.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic when allocation fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let map: OmniMap<i32, &str> = OmniMap::default();
-    ///
-    /// assert_eq!(map.capacity(), 14);
-    /// ```
-    #[inline]
-    fn default() -> Self {
-        unsafe {
-            match MapCore::new_allocate_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
-                Ok(data) => Self { core: data },
-                Err(_) => unreachable_unchecked(),
-            }
-        }
-    }
-}
-
-impl<K, V> Index<usize> for OmniMap<K, V> {
-    type Output = V;
-
-    /// Returns immutable reference to the value at the specified `index`.
-    ///
-    /// # Panics
-    ///
-    /// If the given index is out of bounds.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    ///
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    ///
-    /// assert_eq!(map[0], "a");
-    /// assert_eq!(map[1], "b");
-    /// ```
-    fn index(&self, index: usize) -> &V {
-        assert!(index < self.core.len, "Index out of bounds.");
-        unsafe { &self.core.entries.reference(index).value }
-    }
-}
-
-impl<K, V> IndexMut<usize> for OmniMap<K, V> {
-    /// Returns mutable reference to the value at the specified `index`.
-    ///
-    /// # Panics
-    ///
-    /// If the given index is out of bounds.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::new();
-    ///
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    ///
-    /// map[0] = "c";
-    /// map[1] = "d";
-    ///
-    /// assert_eq!(map[0], "c");
-    /// assert_eq!(map[1], "d");
-    /// ```
-    fn index_mut(&mut self, index: usize) -> &mut V {
-        assert!(index < self.core.len, "Index out of bounds.");
-        unsafe { &mut self.core.entries.reference_mut(index).value }
-    }
-}
-
-impl<K, V> OmniMap<K, V>
-where
-    K: Hash + Eq + Clone,
-    V: Clone,
-{
-    fn make_clone(&self) -> Self {
-        let current_cap = self.core.cap;
-        let current_len = self.core.len;
-
-        let core = match MapCore::new_allocate_init(current_cap, OnError::Panic) {
-            Ok(instance) => instance,
-            Err(_) => unsafe { unreachable_unchecked() },
-        };
-
-        unsafe {
-            // On panic, instance's memory will be deallocated.
-            let mut instance = Self { core };
-
-            debug_assert!(instance.core.cap == self.core.cap);
-            debug_assert!(instance.core.len == 0);
-
-            // Unwind-safe. On panic, cloned items will be dropped.
-            instance
-                .core
-                .entries
-                .clone_from(self.core.entries.ptr(), current_len);
-
-            instance.core.len = current_len;
-
-            // Same index-state.
-            instance.core.free = self.core.free;
-            instance.core.index.copy_from(&self.core.index, current_cap);
-            instance
-        }
-    }
-
-    fn make_compact_clone(&self) -> Self {
-        let current_len = self.core.len;
-
-        let compact_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
-
-        let core = match MapCore::new_allocate_init(compact_cap, OnError::Panic) {
-            Ok(instance) => instance,
-            Err(_) => unsafe { unreachable_unchecked() },
-        };
-
-        unsafe {
-            // On panic, instance's memory will be deallocated.
-            let mut instance = Self { core };
-
-            debug_assert!(instance.core.cap == compact_cap);
-            debug_assert!(instance.core.len == 0);
-
-            // Unwind-safe. On panic, cloned items will be dropped.
-            instance
-                .core
-                .entries
-                .clone_from(self.core.entries.ptr(), current_len);
-
-            instance.core.len = current_len;
-
-            // New index with usable cap set to len.
-            instance.core.free = 0;
-            instance.core.build_index();
-            instance
-        }
-    }
-
-    /// Returns a compact clone of the current instance.
-    ///
-    /// This method creates a clone of the `OmniMap` where the capacity of the internal
-    /// storage is reduced to fit the current number of elements. This can help reduce
-    /// memory usage if the map has a lot of unused capacity.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic when allocation fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use omnimap::OmniMap;
-    ///
-    /// let mut map = OmniMap::with_capacity(5);
-    /// map.insert(1, "a");
-    /// map.insert(2, "b");
-    ///
-    /// let compact_clone = map.clone_compact();
-    ///
-    /// assert_eq!(compact_clone.len(), map.len());
-    /// assert_eq!(compact_clone.capacity(), map.len());
-    ///
-    /// assert_eq!(compact_clone.get(&1), Some(&"a"));
-    /// assert_eq!(compact_clone.get(&2), Some(&"b"));
-    /// ```
-    #[inline]
-    pub fn clone_compact(&self) -> Self {
-        if self.is_empty() {
-            return Self::new();
-        }
-        self.make_compact_clone()
-    }
-}
-
-impl<K, V> Clone for OmniMap<K, V>
-where
-    K: Eq + Hash + Clone,
-    V: Clone,
-{
-    /// Creates an identical clone of the current instance without changing the capacity.
-    /// The new map will have the same capacity as the original regardless of the number of
-    /// elements.
-    ///
-    /// If capacity is a concern, use the `clone_compact` method to create a clone with a capacity
-    /// equal to the number of elements.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic when allocation fails.
-    #[inline]
-    fn clone(&self) -> Self {
-        // Return an unallocated instance if the original is unallocated.
-        if self.core.cap == 0 {
-            return Self::new();
-        }
-        self.make_clone()
-    }
 }
 
 impl<K, V> PartialEq for OmniMap<K, V>
@@ -1767,10 +1766,7 @@ where
     }
 }
 
-impl<'a, K, V> IntoIterator for &'a OmniMap<K, V>
-where
-    K: Eq + Hash,
-{
+impl<'a, K, V> IntoIterator for &'a OmniMap<K, V> {
     type Item = (&'a K, &'a V);
     type IntoIter = EntriesIterator<'a, K, V>;
 
@@ -1780,10 +1776,7 @@ where
     }
 }
 
-impl<'a, K, V> IntoIterator for &'a mut OmniMap<K, V>
-where
-    K: Eq + Hash,
-{
+impl<'a, K, V> IntoIterator for &'a mut OmniMap<K, V> {
     type Item = (&'a K, &'a mut V);
     type IntoIter = EntriesIteratorMut<'a, K, V>;
 
@@ -1920,7 +1913,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
 
 impl<K, V> Debug for OmniMap<K, V>
 where
-    K: Eq + Hash + Debug,
+    K: Debug,
     V: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1930,7 +1923,7 @@ where
 
 impl<K, V> Display for OmniMap<K, V>
 where
-    K: Display + Eq + Hash,
+    K: Display,
     V: Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
