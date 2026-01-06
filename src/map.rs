@@ -1244,12 +1244,12 @@ where
             Err(_) => unsafe { unreachable_unchecked() },
         };
 
+        debug_assert!(core.cap == self.core.cap);
+        debug_assert!(core.len == 0);
+
         unsafe {
             // On panic, instance's memory will be deallocated.
             let mut instance = Self { core };
-
-            debug_assert!(instance.core.cap == self.core.cap);
-            debug_assert!(instance.core.len == 0);
 
             // Unwind-safe. On panic, cloned items will be dropped.
             instance
@@ -1276,12 +1276,12 @@ where
             Err(_) => unsafe { unreachable_unchecked() },
         };
 
+        debug_assert!(core.cap == compact_cap);
+        debug_assert!(core.len == 0);
+
         unsafe {
             // On panic, instance's memory will be deallocated.
             let mut instance = Self { core };
-
-            debug_assert!(instance.core.cap == compact_cap);
-            debug_assert!(instance.core.len == 0);
 
             // Unwind-safe. On panic, cloned items will be dropped.
             instance
