@@ -281,9 +281,7 @@ impl<K, V> MapCore<K, V> {
     /// Deallocates index and entries **without** resetting the fields.
     /// It doesn't call drop on initialized items either.
     ///
-    /// # Safety
-    ///
-    /// Data must be allocated before calling this method.
+    /// Safety: Data must be allocated before calling this method.
     #[inline]
     unsafe fn deallocate(&mut self) {
         unsafe {
@@ -291,19 +289,6 @@ impl<K, V> MapCore<K, V> {
             self.entries.deallocate(layout);
             self.index.deallocate(self.cap);
         }
-    }
-
-    /// Deallocates the entries and the index without calling `drop` on the initialized entries.
-    ///
-    /// fields `cap` and `free` will be reset to `0`.
-    ///
-    /// Safety: Index and entries must be allocated before calling this method.
-    #[inline]
-    unsafe fn deallocate_reset(&mut self) {
-        debug_assert!(self.len == 0);
-        unsafe { self.deallocate() };
-        self.cap = 0;
-        self.free = 0;
     }
 
     #[inline(always)]
@@ -1388,7 +1373,11 @@ where
         // AKA self is allocated and layout can be unchecked.
         if max_cap < self.capacity() {
             if max_cap == 0 {
-                unsafe { self.core.deallocate_reset() };
+                unsafe {
+                    self.core.deallocate();
+                    self.core.cap = 0;
+                    self.core.free = 0;
+                };
                 return;
             }
             let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(max_cap);
@@ -1434,7 +1423,11 @@ where
         let current_len = self.core.len;
         if current_len < self.capacity() {
             if current_len == 0 {
-                unsafe { self.core.deallocate_reset() };
+                unsafe {
+                    self.core.deallocate();
+                    self.core.cap = 0;
+                    self.core.free = 0;
+                };
                 return;
             }
             let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
