@@ -52,7 +52,7 @@ const fn debug_layout_size_align(size: usize, align: usize) {
     debug_assert_valid_alignment(align);
     debug_assert_non_zero_size(size);
     assert!(
-        (isize::MAX as usize + 1) - align > size,
+        ((isize::MAX as usize + 1) - align) >= size,
         "Allocation size exceeds maximum limit on this platform"
     );
 }
@@ -191,10 +191,12 @@ impl<T> AllocationPointer<T> {
             #[cfg(debug_assertions)]
             debug_assert_non_zero_size(size);
 
-            if Self::T_MAX_ALLOC_SIZE > size {
-                let layout = unsafe { Layout::from_size_align_unchecked(size, Self::T_ALIGN) };
-                return Ok(layout);
-            }
+            if size > Self::T_MAX_ALLOC_SIZE {
+                return Err(on_err.overflow());
+            };
+
+            let layout = unsafe { Layout::from_size_align_unchecked(size, Self::T_ALIGN) };
+            return Ok(layout);
         }
 
         Err(on_err.overflow())
@@ -746,7 +748,7 @@ mod alloc_ptr_tests {
     fn test_alloc_ptr_make_layout_unchecked_invalid_size() {
         let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
-            let _ = alloc_ptr.make_layout_unchecked(isize::MAX as usize);
+            let _ = alloc_ptr.make_layout_unchecked(isize::MAX as usize + 1);
         }
     }
 

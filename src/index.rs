@@ -1,5 +1,4 @@
 use core::alloc::Layout;
-use core::hint::unreachable_unchecked;
 
 use crate::AllocError;
 use crate::alloc::AllocationPointer;
@@ -63,11 +62,24 @@ impl MapIndex {
         let slots_size = cap.checked_mul(Self::T_SIZE)?;
         let aligned_tags = (cap + Self::T_ALIGN - 1) & !(Self::T_ALIGN - 1);
         let total_size = slots_size.checked_add(aligned_tags)?;
-        if Self::T_MAX_ALLOC_SIZE > total_size {
-            let layout = unsafe { Layout::from_size_align_unchecked(total_size, Self::T_ALIGN) };
-            return Some((layout, slots_size));
+        if total_size > Self::T_MAX_ALLOC_SIZE {
+            return None;
         }
-        None
+        let layout = unsafe { Layout::from_size_align_unchecked(total_size, Self::T_ALIGN) };
+        return Some((layout, slots_size));
+    }
+
+    /// Returns the `(aligned layout, slots size)` of the index for a given capacity `cap`.
+    /// Size and alignment are calculated for `usize`.
+    ///
+    /// This function **doesn't** check for overflow and valid layout size.
+    #[inline]
+    const unsafe fn index_layout_unchecked(cap: usize) -> (Layout, usize) {
+        let slots_size = cap * Self::T_SIZE;
+        let aligned_tags = (cap + Self::T_ALIGN - 1) & !(Self::T_ALIGN - 1);
+        let total_size = slots_size + aligned_tags;
+        let layout = unsafe { Layout::from_size_align_unchecked(total_size, Self::T_ALIGN) };
+        return (layout, slots_size);
     }
 
     /// Creates new unallocated index.
@@ -101,6 +113,23 @@ impl MapIndex {
         }
     }
 
+    /// Resets the pointer to the start of the allocated buffer and deallocates the current index
+    /// according to the current capacity.
+    ///
+    /// # Safety
+    ///
+    /// - Index must be allocated before calling this method.
+    /// - `cap` must be the same allocated capacity.
+    #[inline]
+    pub(crate) unsafe fn deallocate(&mut self, cap: usize) {
+        unsafe {
+            let (layout, slots_size) = Self::index_layout_unchecked(cap);
+            // Reset the pointer to the start of the allocated memory.
+            self.pointer.set_minus(slots_size);
+            self.pointer.deallocate(layout)
+        }
+    }
+
     /// Copies bitwise `cap` count values from `source` to `self`.
     ///
     /// # Safety
@@ -117,28 +146,6 @@ impl MapIndex {
             let source_start = source.pointer.ptr().sub(slots_size);
             let self_start = self.pointer.ptr().sub(slots_size);
             core::ptr::copy_nonoverlapping(source_start, self_start as *mut u8, unaligned_size)
-        }
-    }
-
-    /// Resets the pointer to the start of the allocated buffer and deallocates the current index
-    /// according to the current capacity.
-    ///
-    /// # Safety
-    ///
-    /// - Index must be allocated before calling this method.
-    /// - `cap` must be the same allocated capacity.
-    #[inline]
-    pub(crate) unsafe fn deallocate(&mut self, cap: usize) {
-        match Self::index_layout(cap) {
-            Some((layout, slots_size)) => {
-                unsafe {
-                    // Reset the pointer to the start of the allocated memory.
-                    self.pointer.set_minus(slots_size);
-                    self.pointer.deallocate(layout)
-                }
-            }
-            // Already checked when allocated, so it must not fail.
-            None => unsafe { unreachable_unchecked() },
         }
     }
 
