@@ -185,8 +185,19 @@ impl<K, V> MapCore<K, V> {
         Ok(instance)
     }
 
+    /// Shrinks or grows the allocated memory space to the specified `new_cap`.
+    ///
+    /// This function will not copy data from the allocated memory to the new memory.
+    ///
+    /// Safety:
+    /// - The map is already allocated.
+    /// - The map must be empty.
     #[inline]
-    fn reallocate_empty(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
+    unsafe fn reallocate_empty(
+        &mut self,
+        new_cap: usize,
+        on_err: OnError,
+    ) -> Result<(), AllocError> {
         debug_assert!(self.len == 0);
         let mut new_data = Self::new_allocate_init(new_cap, on_err)?;
         mem::swap(self, &mut new_data);
@@ -196,14 +207,17 @@ impl<K, V> MapCore<K, V> {
 
     /// Shrinks or grows the allocated memory space to the specified `new_cap`.
     ///
-    /// This method will also reset the index and rebuild it according to the new capacity.
+    /// This function will copy data from allocated memory to the new memory and
+    /// reset the index and rebuild it according to the new capacity.
     ///
     /// On error, the map's state will not be affected.
     ///
-    /// # Safety
-    ///
-    /// This method should be called only when the map is already allocated.
-    fn reallocate_reindex(&mut self, new_cap: usize, on_err: OnError) -> Result<(), AllocError> {
+    /// Safety: This method should be called only when the map is already allocated.
+    unsafe fn reallocate_reindex(
+        &mut self,
+        new_cap: usize,
+        on_err: OnError,
+    ) -> Result<(), AllocError> {
         let mut new_data = Self::new_allocate_init(new_cap, on_err)?;
 
         let current_len = self.len;
@@ -232,6 +246,8 @@ impl<K, V> MapCore<K, V> {
     /// Reclaims deleted slots if suitable or reserves more capacity according to the load factor.
     ///
     /// This method panics when overflow occurs or when allocation fails.
+    ///
+    /// This function shall be called only if the map is considered full.
     fn reclaim_or_reserve(&mut self) {
         if self.len < self.cap >> 1 {
             // Reclaiming deleted slots without reallocation.
@@ -240,7 +256,7 @@ impl<K, V> MapCore<K, V> {
             // Reallocation.
             if likely(self.cap != 0) {
                 let new_cap = self.capacity_next_power_of_two();
-                match self.reallocate_reindex(new_cap, OnError::Panic) {
+                match unsafe { self.reallocate_reindex(new_cap, OnError::Panic) } {
                     Ok(_) => (),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
@@ -261,7 +277,7 @@ impl<K, V> MapCore<K, V> {
             let extra_cap = Self::allocation_capacity(additional, on_err)?;
             if likely(self.cap != 0) {
                 match self.cap.checked_add(extra_cap) {
-                    Some(new_cap) => self.reallocate_reindex(new_cap, on_err),
+                    Some(new_cap) => unsafe { self.reallocate_reindex(new_cap, on_err) },
                     None => Err(on_err.overflow()),
                 }
             } else {
@@ -971,9 +987,9 @@ impl<K, V> OmniMap<K, V> {
             }
             let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(max_cap);
             let result = if current_len == 0 {
-                self.core.reallocate_empty(new_cap, OnError::Panic)
+                unsafe { self.core.reallocate_empty(new_cap, OnError::Panic) }
             } else {
-                self.core.reallocate_reindex(new_cap, OnError::Panic)
+                unsafe { self.core.reallocate_reindex(new_cap, OnError::Panic) }
             };
             match result {
                 Ok(_) => (),
@@ -1020,7 +1036,7 @@ impl<K, V> OmniMap<K, V> {
                 return;
             }
             let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
-            match self.core.reallocate_reindex(new_cap, OnError::Panic) {
+            match unsafe { self.core.reallocate_reindex(new_cap, OnError::Panic) } {
                 Ok(_) => (),
                 Err(_) => unsafe { unreachable_unchecked() },
             }
