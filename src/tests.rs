@@ -518,7 +518,6 @@ mod map_tests {
         assert_eq!(map.capacity(), 4);
         assert_eq!(map.available_capacity(), 1);
 
-        // Remove an item.
         map.shift_remove(&1);
 
         assert_eq!(map.len(), 2);
@@ -526,7 +525,6 @@ mod map_tests {
         assert_eq!(map.capacity(), 4);
         assert_eq!(map.available_capacity(), 1);
 
-        // Clear the map.
         map.clear();
 
         assert_eq!(map.len(), 0);
@@ -539,7 +537,6 @@ mod map_tests {
             assert!(map.debug_tag(i).is_empty())
         }
 
-        // Reinserting items must work.
         map.insert(1, 2);
         assert_eq!(map.get(&1), Some(&2));
     }
@@ -549,17 +546,14 @@ mod map_tests {
         let mut map = OmniMap::new();
         assert_eq!(map.capacity(), 0);
 
-        // Reserve capacity while the map is still unallocated.
         map.reserve(1);
 
-        // Should be fine.
         assert_eq!(map.capacity(), 1);
         assert_eq!(map.allocated_capacity(), 2);
         assert_eq!(map.available_capacity(), 1);
 
         map.insert(1, 2);
 
-        // Reserve more capacity in advance.
         map.reserve(10);
 
         // Must be (2 + requested capacity + reserve capacity) = 14, with 12 as reported usable.
@@ -569,7 +563,6 @@ mod map_tests {
 
         assert_eq!(map.len(), 1);
 
-        // Inserted data are accessible.
         assert_eq!(map.get(&1), Some(&2));
         assert_eq!(map.get(&2), None);
     }
@@ -586,10 +579,8 @@ mod map_tests {
         let mut map = OmniMap::new();
         assert_eq!(map.capacity(), 0);
 
-        // Try reserve capacity while the map is still unallocated.
         let result = map.try_reserve(1);
 
-        // Should be fine.
         assert!(result.is_ok());
         assert_eq!(map.capacity(), 1);
         assert_eq!(map.allocated_capacity(), 2);
@@ -597,7 +588,6 @@ mod map_tests {
 
         map.insert(1, 2);
 
-        // Try reserve more capacity than it can hold.
         let result = map.try_reserve(usize::MAX);
 
         assert!(matches!(result.err().unwrap(), AllocError::Overflow));
@@ -605,7 +595,6 @@ mod map_tests {
         assert_eq!(map.allocated_capacity(), 2);
         assert_eq!(map.available_capacity(), 0);
 
-        // Inserted data are accessible.
         assert_eq!(map.get(&1), Some(&2));
         assert_eq!(map.get(&2), None);
     }
@@ -634,7 +623,6 @@ mod map_tests {
             assert_eq!(map.get(&i), Some(&i));
         }
 
-        // Remove all elements.
         map.clear();
 
         assert_eq!(map.len(), 0);
@@ -797,7 +785,6 @@ mod map_tests {
     fn test_map_iter_keys() {
         let mut map = OmniMap::new();
 
-        // Calling iter_keys on an empty map must return an empty iterator.
         assert_eq!(map.iter_keys().next(), None);
 
         for i in 1..4 {
@@ -813,7 +800,6 @@ mod map_tests {
     fn test_map_iter_values() {
         let mut map = OmniMap::new();
 
-        // Calling iter_values on an empty map must return an empty iterator.
         assert_eq!(map.iter_values().next(), None);
 
         for i in 1..4 {
@@ -904,10 +890,8 @@ mod map_tests {
             );
         }
 
-        // Dropping the map should drop all initialized values.
         drop(map);
 
-        // The drop count must be 3.
         assert_eq!(*count.borrow(), 3);
     }
 
@@ -917,7 +901,6 @@ mod map_tests {
 
         let cloned = map.clone();
 
-        // Clone must be empty.
         assert_eq!(cloned.len(), 0);
         assert_eq!(cloned.debug_deleted(), 0);
         assert_eq!(cloned.capacity(), 0);
@@ -933,25 +916,19 @@ mod map_tests {
 
         let mut cloned = original.clone();
 
-        // Clone must have the same length and capacity as the original.
         assert_eq!(cloned.len(), original.len());
         assert_eq!(cloned.debug_deleted(), original.debug_deleted());
         assert_eq!(cloned.capacity(), original.capacity());
         assert_eq!(cloned.available_capacity(), original.available_capacity());
 
-        // Entries in the clone must be the same as in the original.
         for (key, value) in original.iter() {
             assert_eq!(cloned.get(key), Some(value));
         }
 
-        // Modifying the clone must not affect the original.
         cloned.insert(3, 4);
+
         assert_eq!(cloned.len(), original.len() + 1);
-
-        // original length.
         assert_eq!(original.len(), 2);
-
-        // Key in original does not exit.
         assert_eq!(original.get(&3), None);
     }
 
@@ -961,7 +938,6 @@ mod map_tests {
 
         let cloned = map.clone_compact();
 
-        // Clone must be empty.
         assert_eq!(cloned.len(), 0);
         assert_eq!(cloned.debug_deleted(), 0);
         assert_eq!(cloned.capacity(), 0);
@@ -981,29 +957,21 @@ mod map_tests {
 
         let mut cloned = original.clone_compact();
 
-        // Clone must have the same length as the original.
         assert_eq!(cloned.len(), original.len());
-
-        // Deleted slots must be removed in the clone.
         assert_ne!(cloned.debug_deleted(), original.debug_deleted());
 
         // Clone must have a capacity equal to the length of the original.
         assert_eq!(cloned.capacity(), original.len());
         assert_eq!(cloned.available_capacity(), 0);
 
-        // Entries in the clone must be the same as in the original.
         for (key, value) in original.iter() {
             assert_eq!(cloned.get(key), Some(value));
         }
 
-        // Modifying the clone must not affect the original.
         cloned.insert(3, 4);
+
         assert_eq!(cloned.len(), original.len() + 1);
-
-        // original length.
         assert_eq!(original.len(), 2);
-
-        // Key in original does not exit.
         assert_eq!(original.get(&3), None);
     }
 
@@ -1020,13 +988,10 @@ mod map_tests {
         map2.insert(1, "a");
         map2.insert(2, "b");
 
-        // Must be equal.
         assert_eq!(map1, map2);
 
-        // Modify the second map.
         map2.insert(4, "d");
 
-        // Must not be equal.
         assert_ne!(map1, map2);
     }
 
@@ -1232,7 +1197,6 @@ mod map_tests {
 
         map.shift_remove(&());
 
-        // Len goes back to 0.
         assert_eq!(map.len(), 0);
         assert_eq!(map.get(&()), None);
         assert_eq!(map.capacity(), 3);
@@ -1240,7 +1204,6 @@ mod map_tests {
 
         map.shrink_to_fit();
 
-        // Capacity goes back to 0.
         assert_eq!(map.capacity(), 0);
         assert_eq!(map.available_capacity(), 0);
     }

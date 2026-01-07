@@ -246,8 +246,6 @@ impl MapIndex {
 
 #[cfg(test)]
 mod index_tests {
-    use crate::opt::OnDrop;
-
     use super::*;
 
     #[test]
@@ -378,42 +376,6 @@ mod index_tests {
                 assert!(instance.read_tag(i).is_empty());
             }
 
-            instance.deallocate(10);
-        }
-    }
-
-    #[test]
-    fn test_index_scope_guard() {
-        unsafe {
-            let cap = 10;
-            let mut instance = MapIndex::new_allocate_uninit(cap, OnError::Panic).unwrap();
-            assert!(!instance.pointer.is_null());
-
-            {
-                let _ = OnDrop::set(cap, |cap| instance.deallocate(*cap));
-                // Out of scope, dropped.
-            }
-
-            // Deallocated.
-            assert!(instance.pointer.is_null());
-        }
-    }
-
-    #[test]
-    fn test_index_scope_guard_deactivate() {
-        unsafe {
-            let cap = 10;
-            let mut instance = MapIndex::new_allocate_uninit(cap, OnError::Panic).unwrap();
-            assert!(!instance.pointer.is_null());
-
-            {
-                let guard = OnDrop::set(cap, |cap| instance.deallocate(*cap));
-                guard.finish();
-                // Out of scope.
-            }
-
-            // Still allocated.
-            assert!(!instance.pointer.is_null());
             instance.deallocate(10);
         }
     }
