@@ -1,4 +1,5 @@
 use core::borrow::Borrow;
+use core::cmp::max;
 use core::fmt::{Debug, Display};
 use core::hash::{Hash, Hasher};
 use core::hint::unreachable_unchecked;
@@ -8,7 +9,6 @@ use core::ops::{Index, IndexMut};
 use core::slice::{Iter, IterMut};
 use core::{fmt, mem};
 
-use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 
 use crate::alloc::AllocationPointer;

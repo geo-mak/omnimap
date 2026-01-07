@@ -713,24 +713,11 @@ mod map_tests {
     }
 
     #[test]
-    fn test_map_iter_empty() {
-        let map: OmniMap<u8, u8> = OmniMap::new();
+    fn test_map_iter_for_loop() {
+        let mut map = OmniMap::new();
 
         let mut iter = map.iter();
         assert_eq!(iter.next(), None);
-    }
-
-    #[test]
-    fn test_map_iter_mut_empty() {
-        let mut map: OmniMap<u8, u8> = OmniMap::new();
-
-        let mut iter = map.iter_mut();
-        assert_eq!(iter.next(), None);
-    }
-
-    #[test]
-    fn test_map_iter_for_loop() {
-        let mut map = OmniMap::new();
 
         for i in 1..4 {
             map.insert(i, i + 1);
@@ -745,6 +732,9 @@ mod map_tests {
     #[test]
     fn test_map_iter_for_loop_mut() {
         let mut map = OmniMap::new();
+
+        let mut iter = map.iter_mut();
+        assert_eq!(iter.next(), None);
 
         for i in 1..4 {
             map.insert(i, i + 1);
