@@ -82,18 +82,11 @@ const fn debug_assert_not_allocated<T>(instance: &AllocationPointer<T>) {
 }
 
 /// An indirect reference to _one or more_ values of type `T` consecutively in memory,
-/// with methods for managing the underlying memory directly.
+/// with set of methods for accessing and managing memory directly.
 ///
-/// It guarantees proper `size` and `alignment` of `T`, when storing or accessing
-/// values, but it doesn't guarantee safe operations with measures such as null pointer checks or
-/// bounds checking.
-///
-/// Moreover, it doesn't store any metadata about its allocated memory, such as the size of
-/// the allocated memory and the number of initialized elements, therefore it doesn't offer
-/// automatic memory management.
-///
-/// If `T` is not of trivial type, `drop` must be called on the elements to release resources
-/// before deallocating the allocated memory.
+/// It doesn't store any metadata about its allocated memory, such as the size of
+/// the allocated memory and the number of initialized elements, therefore it doesn't provide
+/// checked operations or automatic memory management.
 ///
 /// Limited checks for invariants are done in debug mode only.
 ///
@@ -110,10 +103,7 @@ impl<T> AllocationPointer<T> {
     pub(crate) const T_ALIGN: usize = align_of::<T>();
     pub(crate) const T_MAX_ALLOC_SIZE: usize = (isize::MAX as usize + 1) - Self::T_ALIGN;
 
-    /// Creates a new `MemorySpace` without allocating memory.
-    ///
-    /// The pointer is set to `null`.
-    ///
+    /// Creates a new pointer set to `null`.
     #[must_use]
     #[inline]
     pub(crate) const fn new() -> Self {
@@ -123,7 +113,7 @@ impl<T> AllocationPointer<T> {
         }
     }
 
-    /// Checks if the pointer of `MemorySpace` is null.
+    /// Checks if the pointer is `null`.
     #[must_use]
     #[inline(always)]
     pub(crate) const fn is_null(&self) -> bool {
@@ -134,8 +124,7 @@ impl<T> AllocationPointer<T> {
     ///
     /// # Safety
     ///
-    /// This method doesn't provide any guarantees about the state of the returned pointer and its
-    /// allocated memory space.
+    /// The returned instance might be `null`.
     ///
     #[must_use]
     #[inline(always)]
@@ -265,8 +254,7 @@ impl<T> AllocationPointer<T> {
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
     /// - Initialized elements will not be dropped before deallocating memory.
     ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not
@@ -351,8 +339,7 @@ impl<T> AllocationPointer<T> {
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
     /// - `count` must be within the bounds of the allocated memory space.
     ///
@@ -375,10 +362,9 @@ impl<T> AllocationPointer<T> {
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
-    /// - `at` must be within the bounds of the allocated memory space.
+    /// - `offset` must be within the bounds of the allocated memory space.
     ///
     /// - If the offset has already been initialized, the value will be overwritten **without**
     ///   calling `drop`. This might cause memory leaks if the element is not of trivial type,
@@ -389,44 +375,42 @@ impl<T> AllocationPointer<T> {
     /// _O_(1).
     ///
     #[inline(always)]
-    pub(crate) const unsafe fn store(&mut self, at: usize, value: T) {
+    pub(crate) const unsafe fn store(&mut self, offset: usize, value: T) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::write((self.ptr).add(at), value) };
+        unsafe { ptr::write((self.ptr).add(offset), value) };
     }
 
-    /// Returns a reference to an element at the specified offset `at`.
+    /// Returns a reference to an element at the specified `offset`.
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGSEGV`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
-    /// - The value of type `T` at the offset `at` must be initialized. Accessing an uninitialized
-    ///   element as `T` is `undefined behavior`.
+    /// - The value at the current address must be an initialized value of type T.
+    ///   Accessing an uninitialized element as `T` is `undefined behavior`.
     ///
     /// # Time Complexity
     ///
     /// _O_(1).
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn reference(&self, at: usize) -> &T {
+    pub(crate) const unsafe fn reference(&self, offset: usize) -> &T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { &*self.ptr.add(at) }
+        unsafe { &*self.ptr.add(offset) }
     }
 
-    /// Returns a mutable reference to an element at the specified offset `at`.
+    /// Returns a mutable reference to an element at the specified `offset`.
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGSEGV`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
-    /// - The value of type `T` at the offset `at` must be initialized. Accessing an uninitialized
-    ///   element as `T` is `undefined behavior`.
+    /// - The value at the current address must be an initialized value of type T.
+    ///   Accessing an uninitialized element as `T` is `undefined behavior`.
     ///
     /// # Time Complexity
     ///
@@ -434,20 +418,21 @@ impl<T> AllocationPointer<T> {
     ///
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn reference_mut(&mut self, at: usize) -> &mut T {
+    pub(crate) const unsafe fn reference_mut(&mut self, offset: usize) -> &mut T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { &mut *(self.ptr).add(at) }
+        unsafe { &mut *(self.ptr).add(offset) }
     }
 
-    /// Returns a reference to the first element.
+    /// Returns a reference to the element where the current pointer is.
     ///
     /// # Safety
     ///
-    /// This method checks for out of bounds access in debug mode only.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`..
     ///
-    /// The caller must ensure that the `MemorySpace` is not empty.
+    /// - The value at the current address must be an initialized value of type T.
+    ///   Accessing an uninitialized element as `T` is `undefined behavior`.
     ///
     /// # Time Complexity
     ///
@@ -462,16 +447,15 @@ impl<T> AllocationPointer<T> {
         unsafe { &*self.ptr }
     }
 
-    /// Reads and returns the value at the specified offset `at`.
+    /// Reads and returns the value at the specified `offset`.
     ///
     /// This method creates a bitwise copy of `T` with `move` semantics.
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null ptr will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
-    /// - `at` must be within the bounds of the initialized elements.
+    /// - `offset` must be within the bounds of the initialized elements.
     ///   Loading an uninitialized elements as `T` is `undefined behavior`.
     ///
     /// - If `T` is not a trivial type, the value at this offset can be in an invalid state after
@@ -481,50 +465,49 @@ impl<T> AllocationPointer<T> {
     ///
     /// _O_(1).
     #[inline(always)]
-    pub(crate) const unsafe fn read_for_ownership(&mut self, at: usize) -> T {
+    pub(crate) const unsafe fn read_for_ownership(&mut self, offset: usize) -> T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::read((self.ptr).add(at)) }
+        unsafe { ptr::read((self.ptr).add(offset)) }
     }
 
-    /// Shifts the `count` values after `at` to the left, overwriting the value at `at`.
+    /// Shifts `count` number of values after the provided `offset` to the left,
+    /// overwriting the value at that `offset`.
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null ptr will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment.
     ///
-    /// - `at + count` must be within the bounds of the allocated memory space.
+    /// - `offset + count` must be within the bounds of the allocated memory.
     ///
     /// # Time Complexity
     ///
     /// _O_(n) where `n` is the number (`count`) of the elements to be shifted.
     #[inline(always)]
-    pub const unsafe fn shift_left(&mut self, at: usize, count: usize) {
+    pub const unsafe fn shift_left(&mut self, offset: usize, count: usize) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
         unsafe {
-            let dst = (self.ptr).add(at);
+            let dst = (self.ptr).add(offset);
             let src = dst.add(1);
             ptr::copy(src, dst, count);
         }
     }
 
-    /// Copies the value at the offset `from` to the offset `to`, overwriting the value at `to`
-    /// and leaving the value at `from` unaffected.
+    /// Copies the value at the offset `src` to the offset `dst`, overwriting the value at `dst`
+    /// and leaving the value at `src` unaffected.
     ///
     /// This operation is internally untyped, the initialization state is operationally irrelevant.
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null ptr will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment.
     ///
-    /// - `from` and `to` must be within the bounds of the allocated memory space.
+    /// - `src` and `dst` must be within the bounds of the allocated memory-segment.
     ///
-    /// - If the offset `to` has already been initialized, the value will be overwritten **without**
+    /// - If the value at offset `dst` has been initialized already, the value will be overwritten **without**
     ///   calling `drop`. This might cause memory leaks if the element is not of trivial type,
     ///   or not dropped properly before overwriting.
     ///
@@ -532,13 +515,13 @@ impl<T> AllocationPointer<T> {
     ///
     /// _O_(1).
     #[inline(always)]
-    pub const unsafe fn memmove_one(&mut self, from: usize, to: usize) {
+    pub const unsafe fn memmove_one(&mut self, src: usize, dst: usize) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
         unsafe {
-            let src = (self.ptr).add(from);
-            let dst = (self.ptr).add(to);
+            let src = (self.ptr).add(src);
+            let dst = (self.ptr).add(dst);
             ptr::copy(src, dst, 1);
         }
     }
@@ -553,14 +536,12 @@ impl<T> AllocationPointer<T> {
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
     /// - `count` must be within the bounds of the **initialized** elements.
     ///   Calling `drop` on uninitialized elements is `undefined behavior`.
     ///
-    /// - If `T` is not of trivial type, using dropped values after calling this method can cause
-    ///   `undefined behavior`.
+    /// - If `T` is not of trivial type, using dropped values after calling this method is `undefined behavior`.
     ///
     /// # Time Complexity
     ///
@@ -582,16 +563,14 @@ impl<T> AllocationPointer<T> {
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
     /// - `range` must not be empty.
     ///
     /// - `range` must be within the bounds of the **initialized** elements.
     ///   Calling `drop` on uninitialized elements is `undefined behavior`.
     ///
-    /// - If `T` is not of trivial type, using dropped values after calling this method is
-    ///   `undefined behavior`.
+    /// - If `T` is not of trivial type, using dropped values after calling this method is `undefined behavior`.
     ///
     /// These invariants are checked in debug mode only.
     ///
@@ -620,8 +599,7 @@ impl<T> AllocationPointer<T> {
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
     /// - `count` must be within the bounds of the initialized elements.
     ///   Loading an uninitialized elements as `T` is `undefined behavior`.
@@ -645,8 +623,7 @@ impl<T> AllocationPointer<T> {
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
     /// - `count` must be within the bounds of the initialized elements.
     ///   Accessing an uninitialized elements as `T` is `undefined behavior`.
@@ -675,8 +652,7 @@ impl<T> AllocationPointer<T> {
     ///
     /// # Safety
     ///
-    /// - Pointer must be allocated before calling this method.
-    ///   Calling this method with a null pointer will cause termination with `SIGABRT`.
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
     /// - `clone_count` must be within the bounds of the initialized elements.
     ///   Cloning an uninitialized elements as `T` is `undefined behavior`.
