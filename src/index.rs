@@ -7,25 +7,30 @@ use crate::mem::pointers::UnmanagedPointer;
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub(crate) enum Tag {
-    Empty = 0,
-    Deleted = 1,
-    Occupied = 2,
+    Free = 0,
+    Discarded = 1,
+    Used = 2,
 }
 
 impl Tag {
     #[inline(always)]
-    pub(crate) const fn is_empty(self) -> bool {
-        self as u8 == Tag::Empty as u8
+    pub(crate) const fn as_int(self) -> u8 {
+        self as u8
     }
 
     #[inline(always)]
-    pub(crate) const fn is_deleted(self) -> bool {
-        self as u8 == Tag::Deleted as u8
+    pub(crate) const fn is_free(self) -> bool {
+        self.as_int() == Tag::Free.as_int()
     }
 
     #[inline(always)]
-    pub(crate) const fn is_occupied(self) -> bool {
-        self as u8 == Tag::Occupied as u8
+    pub(crate) const fn is_used(self) -> bool {
+        self.as_int() == Tag::Used.as_int()
+    }
+
+    #[inline(always)]
+    pub(crate) const fn is_discarded(self) -> bool {
+        self.as_int() == Tag::Discarded.as_int()
     }
 }
 
@@ -168,7 +173,7 @@ impl MapIndex {
     /// Index must be allocated before calling this method.
     #[inline(always)]
     pub(crate) const unsafe fn store_tag(&mut self, offset: usize, tag: Tag) {
-        unsafe { self.pointer.store(offset, tag as u8) };
+        unsafe { self.pointer.store(offset, tag.as_int()) };
     }
 
     /// Returns a mutable reference to the control tag in the index at tag's `offset`.
@@ -292,15 +297,15 @@ mod index_tests {
             instance.set_tags_empty(10);
 
             for i in 0..10 {
-                assert!(instance.read_tag(i).is_empty());
+                assert!(instance.read_tag(i).is_free());
             }
 
             for i in 0..10 {
-                instance.store_tag(i, Tag::Occupied)
+                instance.store_tag(i, Tag::Used)
             }
 
             for i in 0..10 {
-                assert!(instance.read_tag(i).is_occupied());
+                assert!(instance.read_tag(i).is_used());
             }
 
             instance.deallocate(10)
@@ -334,7 +339,7 @@ mod index_tests {
             source.set_tags_empty(10);
 
             for i in 0..10 {
-                source.store_tag(i, Tag::Occupied)
+                source.store_tag(i, Tag::Used)
             }
 
             for i in 0..10 {
@@ -346,7 +351,7 @@ mod index_tests {
             target.copy_from(&source, 10);
 
             for i in 0..10 {
-                assert!(target.read_tag(i).is_occupied());
+                assert!(target.read_tag(i).is_used());
             }
 
             for i in 0..10 {
@@ -366,13 +371,13 @@ mod index_tests {
             instance.set_tags_empty(10);
 
             for i in 0..10 {
-                instance.store_tag(i, Tag::Occupied)
+                instance.store_tag(i, Tag::Used)
             }
 
             instance.set_tags_empty(10);
 
             for i in 0..10 {
-                assert!(instance.read_tag(i).is_empty());
+                assert!(instance.read_tag(i).is_free());
             }
 
             instance.deallocate(10);

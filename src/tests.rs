@@ -240,13 +240,13 @@ mod map_tests {
 
         for i in 0..map.allocated_capacity() {
             match map.debug_tag(i) {
-                Tag::Deleted => {
+                Tag::Discarded => {
                     deleted += 1;
                 }
-                Tag::Occupied => {
+                Tag::Used => {
                     occupied += 1;
                 }
-                Tag::Empty => {
+                Tag::Free => {
                     empty += 1;
                 }
             }
@@ -371,7 +371,7 @@ mod map_tests {
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 1);
 
-        assert!(map.debug_tag(0).is_deleted());
+        assert!(map.debug_tag(0).is_discarded());
 
         assert_eq!(map.capacity(), 3);
         assert_eq!(map.available_capacity(), 2);
@@ -406,13 +406,13 @@ mod map_tests {
 
         for i in 0..map.allocated_capacity() {
             match map.debug_tag(i) {
-                Tag::Deleted => {
+                Tag::Discarded => {
                     deleted += 1;
                 }
-                Tag::Occupied => {
+                Tag::Used => {
                     occupied += 1;
                 }
-                Tag::Empty => {
+                Tag::Free => {
                     empty += 1;
                 }
             }
@@ -447,7 +447,7 @@ mod map_tests {
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 1);
 
-        assert!(map.debug_tag(0).is_deleted());
+        assert!(map.debug_tag(0).is_discarded());
 
         assert_eq!(map.capacity(), 3);
         assert_eq!(map.available_capacity(), 2);
@@ -482,13 +482,13 @@ mod map_tests {
 
         for i in 0..map.allocated_capacity() {
             match map.debug_tag(i) {
-                Tag::Deleted => {
+                Tag::Discarded => {
                     deleted += 1;
                 }
-                Tag::Occupied => {
+                Tag::Used => {
                     occupied += 1;
                 }
-                Tag::Empty => {
+                Tag::Free => {
                     empty += 1;
                 }
             }
@@ -534,7 +534,7 @@ mod map_tests {
 
         // All slots must be empty in the index.
         for i in 0..map.allocated_capacity() {
-            assert!(map.debug_tag(i).is_empty())
+            assert!(map.debug_tag(i).is_free())
         }
 
         map.insert(1, 2);
@@ -1046,7 +1046,7 @@ mod map_tests {
 
         // Initial state, all slots must be empty.
         for i in 0..map.allocated_capacity() {
-            assert!(map.debug_tag(i).is_empty())
+            assert!(map.debug_tag(i).is_free())
         }
 
         assert_eq!(map.len(), 0);
@@ -1079,7 +1079,7 @@ mod map_tests {
 
         for i in 0..alloc_cap {
             match map.debug_tag(i) {
-                Tag::Occupied => {
+                Tag::Used => {
                     let index = map.debug_slot_value(i);
                     assert!(
                         occupied_indices.insert(index),
@@ -1087,10 +1087,10 @@ mod map_tests {
                         index
                     );
                 }
-                Tag::Empty => {
+                Tag::Free => {
                     empty_indices += 1;
                 }
-                Tag::Deleted => {
+                Tag::Discarded => {
                     deleted_indices += 1;
                 }
             }
@@ -1109,7 +1109,7 @@ mod map_tests {
 
         // No deleted slots should be present.
         for i in 0..map.allocated_capacity() {
-            assert!(!map.debug_tag(i).is_deleted())
+            assert!(!map.debug_tag(i).is_discarded())
         }
 
         assert_eq!(map.len(), 75);
@@ -1138,7 +1138,7 @@ mod map_tests {
 
         // No occupied or empty slots should be present.
         for i in 0..map.allocated_capacity() {
-            assert!(!map.debug_tag(i).is_occupied())
+            assert!(!map.debug_tag(i).is_used())
         }
 
         assert_eq!(map.len(), 0);
@@ -1160,7 +1160,7 @@ mod map_tests {
 
         // The map must be able to reindex successfully, no deleted slots should be present.
         for i in 0..map.allocated_capacity() {
-            assert!(!map.debug_tag(i).is_deleted())
+            assert!(!map.debug_tag(i).is_discarded())
         }
 
         for i in 75..100 {

@@ -397,14 +397,14 @@ impl<K, V> MapCore<K, V> {
 
                 'probing: loop {
                     let tag = self.index.tag_ref_mut(slot);
-                    if tag.is_empty() {
-                        *tag = Tag::Occupied;
+                    if tag.is_free() {
+                        *tag = Tag::Used;
                         self.index.store_entry_index(slot, i);
                         break 'probing;
                     }
 
                     debug_assert!(
-                        !tag.is_deleted(),
+                        !tag.is_discarded(),
                         "Logic error: detected deleted slot while building index"
                     );
 
@@ -424,7 +424,7 @@ impl<K, V> MapCore<K, V> {
         let mut i = 0;
         unsafe {
             while i < self.cap {
-                if self.index.read_tag(i).is_occupied() {
+                if self.index.read_tag(i).is_used() {
                     let index = self.index.entry_index_ref_mut(i);
                     if *index > after {
                         *index -= 1;
@@ -448,7 +448,7 @@ impl<K, V> MapCore<K, V> {
                 let mut slot = hash % self.cap;
 
                 'probing: loop {
-                    if self.index.read_tag(slot).is_occupied() {
+                    if self.index.read_tag(slot).is_used() {
                         let index = self.index.entry_index_ref_mut(slot);
                         if *index == i {
                             *index -= 1;
@@ -511,14 +511,14 @@ impl<K, V> MapCore<K, V> {
         unsafe {
             loop {
                 match self.index.read_tag(slot) {
-                    Tag::Occupied => {
+                    Tag::Used => {
                         let entry = self.index.read_entry_index(slot);
                         if key.eq_key(&self.entries.reference(entry).key) {
                             return FindResult { slot, entry };
                         }
                     }
-                    Tag::Empty => return FindResult::just_slot(slot),
-                    Tag::Deleted => { /* TODO: Recovering it can save expensive reallocations */ }
+                    Tag::Free => return FindResult::just_slot(slot),
+                    Tag::Discarded => { /* TODO: Recovering it can save expensive reallocations */ }
                 }
                 slot = (slot + 1) % self.cap;
             }
@@ -553,7 +553,7 @@ impl<K, V> MapCore<K, V> {
             // Deleted entries are currently not recoverable so self.free remains unchanged.
 
             unsafe {
-                self.index.store_tag(result.slot, Tag::Deleted);
+                self.index.store_tag(result.slot, Tag::Discarded);
                 let removed = self.entries.read_for_ownership(index).value;
 
                 if likely(index != self.len) {
@@ -1442,7 +1442,7 @@ where
 
         unsafe {
             debug_assert!(
-                self.core.index.read_tag(result.slot).is_empty(),
+                self.core.index.read_tag(result.slot).is_free(),
                 "Logic error: attempt to overwrite a non-empty slot while inserting"
             );
 
@@ -1450,9 +1450,7 @@ where
                 .entries
                 .store(self.core.len, Entry::new(key, value, hash));
 
-            self.core
-                .index
-                .store(result.slot, Tag::Occupied, self.core.len);
+            self.core.index.store(result.slot, Tag::Used, self.core.len);
         }
 
         self.core.len += 1;
@@ -1745,7 +1743,7 @@ where
         self.core.len -= 1;
 
         unsafe {
-            self.core.index.store_tag(result.slot, Tag::Deleted);
+            self.core.index.store_tag(result.slot, Tag::Discarded);
             let removed = self.core.entries.read_for_ownership(0);
 
             // Call order matters.
@@ -1799,7 +1797,7 @@ where
         self.core.len -= 1;
 
         unsafe {
-            self.core.index.store_tag(result.slot, Tag::Deleted);
+            self.core.index.store_tag(result.slot, Tag::Discarded);
             let removed = self.core.entries.read_for_ownership(self.core.len);
 
             Some((removed.key, removed.value))
