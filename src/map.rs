@@ -150,9 +150,9 @@ impl<K, V> MapCore<K, V> {
 
             let layout = entries.layout_of(cap, on_err)?;
 
-            let mut index = MapIndex::new_allocate_uninit(cap, on_err)?;
+            let mut index = MapIndex::new_acquire_uninit(cap, on_err)?;
 
-            let error_guard = OnDrop::set(cap, |cap| index.deallocate(*cap));
+            let error_guard = OnDrop::set(cap, |cap| index.release(*cap));
 
             entries.acquire(layout, on_err)?;
 
@@ -317,7 +317,7 @@ impl<K, V> MapCore<K, V> {
         unsafe {
             let layout = self.entries.layout_unchecked_of(self.cap);
             self.entries.release(layout);
-            self.index.deallocate(self.cap);
+            self.index.release(self.cap);
         }
     }
 
@@ -1956,7 +1956,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         // The fields that need deallocation are index and entries.
         // index must be deallocated here and entries shall be deallocated by the iterator.
         unsafe {
-            manual_self.core.index.deallocate(iterator.cap);
+            manual_self.core.index.release(iterator.cap);
             iterator.entries = manual_self.core.entries.duplicate();
         }
 

@@ -99,7 +99,7 @@ impl MapIndex {
     ///
     /// Handling of errors will be done according to the error handling context `on_err`.
     #[inline]
-    pub(crate) unsafe fn new_allocate_uninit(
+    pub(crate) unsafe fn new_acquire_uninit(
         cap: usize,
         on_err: OnError,
     ) -> Result<Self, MemoryError> {
@@ -125,7 +125,7 @@ impl MapIndex {
     /// - Index must be allocated before calling this method.
     /// - `cap` must be the same allocated capacity.
     #[inline]
-    pub(crate) unsafe fn deallocate(&mut self, cap: usize) {
+    pub(crate) unsafe fn release(&mut self, cap: usize) {
         unsafe {
             let (layout, slots_size) = Self::index_layout_unchecked(cap);
             // Reset the pointer to the start of the allocated memory.
@@ -273,18 +273,18 @@ mod index_tests {
     #[test]
     fn test_index_new_allocate_uninitialized() {
         unsafe {
-            let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
+            let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
             assert!(!instance.pointer.is_null());
 
-            instance.deallocate(10)
+            instance.release(10)
         }
     }
 
     #[test]
     fn test_index_allocate_uninitialized_error() {
         unsafe {
-            let result = MapIndex::new_allocate_uninit(isize::MAX as usize, OnError::ReturnErr);
+            let result = MapIndex::new_acquire_uninit(isize::MAX as usize, OnError::ReturnErr);
             assert!(result.is_err());
         }
     }
@@ -292,7 +292,7 @@ mod index_tests {
     #[test]
     fn test_index_store_read_tags() {
         unsafe {
-            let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
+            let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
             instance.reset_tags(10);
 
@@ -308,14 +308,14 @@ mod index_tests {
                 assert!(instance.load_tag(i).is_used());
             }
 
-            instance.deallocate(10)
+            instance.release(10)
         }
     }
 
     #[test]
     fn test_index_store_read_entry_index() {
         unsafe {
-            let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
+            let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
             instance.reset_tags(10);
 
@@ -327,14 +327,14 @@ mod index_tests {
                 assert_eq!(instance.load_entry_index(i), 11);
             }
 
-            instance.deallocate(10)
+            instance.release(10)
         }
     }
 
     #[test]
     fn test_index_initialize_from() {
         unsafe {
-            let mut source = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
+            let mut source = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
             source.reset_tags(10);
 
@@ -346,7 +346,7 @@ mod index_tests {
                 source.store_entry_index(i, 11)
             }
 
-            let mut target = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
+            let mut target = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
             target.copy_from(&source, 10);
 
@@ -358,15 +358,15 @@ mod index_tests {
                 assert_eq!(target.load_entry_index(i), 11);
             }
 
-            source.deallocate(10);
-            target.deallocate(10)
+            source.release(10);
+            target.release(10)
         }
     }
 
     #[test]
     fn test_index_reset_control_tags() {
         unsafe {
-            let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
+            let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
             instance.reset_tags(10);
 
@@ -380,7 +380,7 @@ mod index_tests {
                 assert!(instance.load_tag(i).is_free());
             }
 
-            instance.deallocate(10);
+            instance.release(10);
         }
     }
 }
