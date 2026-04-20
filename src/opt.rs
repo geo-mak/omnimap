@@ -46,12 +46,12 @@ where
 {
     #[must_use]
     #[inline(always)]
-    pub(crate) const fn set(arg: T, on_drop: F) -> OnDrop<T, F> {
+    pub(crate) const fn set_on(arg: T, on_drop: F) -> OnDrop<T, F> {
         OnDrop { arg, on_drop }
     }
 
     #[inline(always)]
-    pub(crate) const fn finish(self) {
+    pub(crate) const fn set_off(self) {
         let _ = ManuallyDrop::new(self);
     }
 }

@@ -152,11 +152,11 @@ impl<K, V> MapCore<K, V> {
 
             let mut index = MapIndex::new_acquire_uninit(cap, on_err)?;
 
-            let error_guard = OnDrop::set(cap, |cap| index.release(*cap));
+            let error_guard = OnDrop::set_on(cap, |cap| index.release(*cap));
 
             entries.acquire(layout, on_err)?;
 
-            error_guard.finish();
+            error_guard.set_off();
 
             let instance = MapCore {
                 index,
@@ -1075,7 +1075,7 @@ impl<K, V> OmniMap<K, V> {
             return;
         }
 
-        let protected_clear = OnDrop::set(self, |current| {
+        let protected_clear = OnDrop::set_on(self, |current| {
             unsafe { current.core.index.reset_tags(current.core.cap) };
             current.core.len = 0;
             current.core.free = current.core.usable_capacity();

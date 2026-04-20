@@ -667,7 +667,7 @@ impl<T> UnmanagedPointer<T> {
         let cloned = 0;
 
         let mut drop_guard =
-            OnDrop::set(cloned, |cloned| unsafe { self.drop_initialized(*cloned) });
+            OnDrop::set_on(cloned, |cloned| unsafe { self.drop_initialized(*cloned) });
 
         unsafe {
             for i in 0..clone_count {
@@ -679,7 +679,7 @@ impl<T> UnmanagedPointer<T> {
         }
 
         // Cloned successfully (If any).
-        drop_guard.finish();
+        drop_guard.set_off();
     }
 }
 
