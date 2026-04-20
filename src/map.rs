@@ -162,7 +162,7 @@ impl<K, V> MapCore<K, V> {
                 index,
                 entries,
                 cap,
-                free: Self::usable_capacity_from(cap),
+                free: Self::usable_capacity_of(cap),
                 len: 0,
             };
 
@@ -322,13 +322,13 @@ impl<K, V> MapCore<K, V> {
     }
 
     #[inline(always)]
-    const fn usable_capacity_from(cap: usize) -> usize {
+    const fn usable_capacity_of(cap: usize) -> usize {
         (cap >> 3) * 7 + ((cap & 7) * 7 >> 3)
     }
 
     #[inline(always)]
     const fn usable_capacity(&self) -> usize {
-        Self::usable_capacity_from(self.cap)
+        Self::usable_capacity_of(self.cap)
     }
 
     /// Returns the value that maintains the load factor for a given capacity `given`.
