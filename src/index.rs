@@ -162,7 +162,7 @@ impl MapIndex {
     /// - Safe casting to `Tag` depends on initializing the control tags when allocating and
     ///   reallocating and using `Tag` enum to store tag's value.
     #[inline(always)]
-    pub(crate) const unsafe fn read_tag(&self, offset: usize) -> Tag {
+    pub(crate) const unsafe fn load_tag(&self, offset: usize) -> Tag {
         unsafe { self.pointer.cast::<Tag>().add(offset).read() }
     }
 
@@ -195,7 +195,7 @@ impl MapIndex {
     ///
     /// Index must be allocated before calling this method.
     #[inline(always)]
-    pub(crate) const unsafe fn read_entry_index(&self, offset: usize) -> usize {
+    pub(crate) const unsafe fn load_entry_index(&self, offset: usize) -> usize {
         unsafe { self.pointer.cast::<usize>().sub(offset + 1).read() }
     }
 
@@ -237,13 +237,13 @@ impl MapIndex {
         };
     }
 
-    /// Sets all control tags to empty.
+    /// Sets all control tags to free.
     ///
     /// # Safety
     ///
     /// Index must be allocated before calling this method.
     #[inline(always)]
-    pub(crate) const unsafe fn set_tags_empty(&mut self, cap: usize) {
+    pub(crate) const unsafe fn reset_tags(&mut self, cap: usize) {
         unsafe { self.pointer.memset_zero(cap) }
     }
 }
@@ -294,10 +294,10 @@ mod index_tests {
         unsafe {
             let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
-            instance.set_tags_empty(10);
+            instance.reset_tags(10);
 
             for i in 0..10 {
-                assert!(instance.read_tag(i).is_free());
+                assert!(instance.load_tag(i).is_free());
             }
 
             for i in 0..10 {
@@ -305,7 +305,7 @@ mod index_tests {
             }
 
             for i in 0..10 {
-                assert!(instance.read_tag(i).is_used());
+                assert!(instance.load_tag(i).is_used());
             }
 
             instance.deallocate(10)
@@ -317,14 +317,14 @@ mod index_tests {
         unsafe {
             let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
-            instance.set_tags_empty(10);
+            instance.reset_tags(10);
 
             for i in 0..10 {
                 instance.store_entry_index(i, 11)
             }
 
             for i in 0..10 {
-                assert_eq!(instance.read_entry_index(i), 11);
+                assert_eq!(instance.load_entry_index(i), 11);
             }
 
             instance.deallocate(10)
@@ -336,7 +336,7 @@ mod index_tests {
         unsafe {
             let mut source = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
-            source.set_tags_empty(10);
+            source.reset_tags(10);
 
             for i in 0..10 {
                 source.store_tag(i, Tag::Used)
@@ -351,11 +351,11 @@ mod index_tests {
             target.copy_from(&source, 10);
 
             for i in 0..10 {
-                assert!(target.read_tag(i).is_used());
+                assert!(target.load_tag(i).is_used());
             }
 
             for i in 0..10 {
-                assert_eq!(target.read_entry_index(i), 11);
+                assert_eq!(target.load_entry_index(i), 11);
             }
 
             source.deallocate(10);
@@ -368,16 +368,16 @@ mod index_tests {
         unsafe {
             let mut instance = MapIndex::new_allocate_uninit(10, OnError::Panic).unwrap();
 
-            instance.set_tags_empty(10);
+            instance.reset_tags(10);
 
             for i in 0..10 {
                 instance.store_tag(i, Tag::Used)
             }
 
-            instance.set_tags_empty(10);
+            instance.reset_tags(10);
 
             for i in 0..10 {
-                assert!(instance.read_tag(i).is_free());
+                assert!(instance.load_tag(i).is_free());
             }
 
             instance.deallocate(10);

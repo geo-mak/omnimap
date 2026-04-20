@@ -181,7 +181,7 @@ impl<K, V> MapCore<K, V> {
     #[inline(always)]
     fn new_allocate_init(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
         let mut instance = Self::new_allocate_uninit(cap, on_err)?;
-        unsafe { instance.index.set_tags_empty(cap) };
+        unsafe { instance.index.reset_tags(cap) };
         Ok(instance)
     }
 
@@ -381,7 +381,7 @@ impl<K, V> MapCore<K, V> {
     /// of the index.
     #[inline(always)]
     fn reindex(&mut self) {
-        unsafe { self.index.set_tags_empty(self.cap) };
+        unsafe { self.index.reset_tags(self.cap) };
         self.free = self.usable_capacity() - self.len;
         self.build_index();
     }
@@ -424,7 +424,7 @@ impl<K, V> MapCore<K, V> {
         let mut i = 0;
         unsafe {
             while i < self.cap {
-                if self.index.read_tag(i).is_used() {
+                if self.index.load_tag(i).is_used() {
                     let index = self.index.entry_index_ref_mut(i);
                     if *index > after {
                         *index -= 1;
@@ -448,7 +448,7 @@ impl<K, V> MapCore<K, V> {
                 let mut slot = hash % self.cap;
 
                 'probing: loop {
-                    if self.index.read_tag(slot).is_used() {
+                    if self.index.load_tag(slot).is_used() {
                         let index = self.index.entry_index_ref_mut(slot);
                         if *index == i {
                             *index -= 1;
@@ -510,9 +510,9 @@ impl<K, V> MapCore<K, V> {
 
         unsafe {
             loop {
-                match self.index.read_tag(slot) {
+                match self.index.load_tag(slot) {
                     Tag::Used => {
-                        let entry = self.index.read_entry_index(slot);
+                        let entry = self.index.load_entry_index(slot);
                         if key.eq_key(&self.entries.reference(entry).key) {
                             return FindResult { slot, entry };
                         }
@@ -1076,7 +1076,7 @@ impl<K, V> OmniMap<K, V> {
         }
 
         let protected_clear = OnDrop::set(self, |current| {
-            unsafe { current.core.index.set_tags_empty(current.core.cap) };
+            unsafe { current.core.index.reset_tags(current.core.cap) };
             current.core.len = 0;
             current.core.free = current.core.usable_capacity();
         });
@@ -1442,7 +1442,7 @@ where
 
         unsafe {
             debug_assert!(
-                self.core.index.read_tag(result.slot).is_free(),
+                self.core.index.load_tag(result.slot).is_free(),
                 "Logic error: attempt to overwrite a non-empty slot while inserting"
             );
 
@@ -1997,7 +1997,7 @@ impl<K, V> OmniMap<K, V> {
     /// This method is used for testing purposes only and not available in release builds.
     pub(crate) fn debug_tag(&self, offset: usize) -> Tag {
         debug_assert!(offset < self.core.cap);
-        unsafe { self.core.index.read_tag(offset) }
+        unsafe { self.core.index.load_tag(offset) }
     }
 
     /// Returns the slot's value at the specified `offset`.
@@ -2005,7 +2005,7 @@ impl<K, V> OmniMap<K, V> {
     /// This method is used for testing purposes only and not available in release builds.
     pub(crate) fn debug_slot_value(&self, offset: usize) -> usize {
         debug_assert!(offset < self.core.cap);
-        unsafe { self.core.index.read_entry_index(offset) }
+        unsafe { self.core.index.load_entry_index(offset) }
     }
 
     /// Returns the number of deleted slots.
