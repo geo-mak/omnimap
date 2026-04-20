@@ -5,7 +5,7 @@ use core::ptr;
 
 use std::alloc::{self, alloc};
 
-use crate::mem::error::{AllocError, OnError};
+use crate::mem::error::{MemoryError, OnError};
 use crate::opt::OnDrop;
 use crate::opt::branch_hints::likely;
 
@@ -172,7 +172,7 @@ impl<T> AllocationPointer<T> {
         &self,
         count: usize,
         on_err: OnError,
-    ) -> Result<Layout, AllocError> {
+    ) -> Result<Layout, MemoryError> {
         #[cfg(debug_assertions)]
         debug_assert_valid_alignment(Self::T_ALIGN);
 
@@ -181,14 +181,14 @@ impl<T> AllocationPointer<T> {
             debug_assert_non_zero_size(size);
 
             if size > Self::T_MAX_ALLOC_SIZE {
-                return Err(on_err.overflow());
+                return Err(on_err.layout_err());
             };
 
             let layout = unsafe { Layout::from_size_align_unchecked(size, Self::T_ALIGN) };
             return Ok(layout);
         }
 
-        Err(on_err.overflow())
+        Err(on_err.layout_err())
     }
 
     /// Allocates memory space according to the provided `layout`.
@@ -229,7 +229,7 @@ impl<T> AllocationPointer<T> {
         &mut self,
         layout: Layout,
         on_err: OnError,
-    ) -> Result<(), AllocError> {
+    ) -> Result<(), MemoryError> {
         #[cfg(debug_assertions)]
         debug_assert_not_allocated(self);
 
@@ -243,7 +243,7 @@ impl<T> AllocationPointer<T> {
             return Ok(());
         }
 
-        Err(on_err.alloc_err(layout))
+        Err(on_err.allocator_err(layout))
     }
 
     /// Deallocates the memory space pointed to by the pointer according to the provided `layout`.
@@ -749,7 +749,7 @@ mod alloc_ptr_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Allocation Error: capacity overflow")]
+    #[should_panic(expected = "layout error")]
     fn test_alloc_ptr_make_layout_overflow_panic() {
         let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
         unsafe {
@@ -763,7 +763,7 @@ mod alloc_ptr_tests {
         unsafe {
             let result = alloc_ptr.make_layout(usize::MAX, OnError::ReturnErr);
             assert!(result.is_err());
-            assert!(matches!(result, Err(AllocError::Overflow)));
+            assert!(matches!(result, Err(MemoryError::LayoutErr)));
         }
     }
 

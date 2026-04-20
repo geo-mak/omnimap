@@ -1,8 +1,7 @@
 use core::alloc::Layout;
 
-use crate::AllocError;
+use crate::mem::error::{MemoryError, OnError};
 use crate::mem::pointers::AllocationPointer;
-use crate::mem::error::OnError;
 
 /// The state of the slot in the index.
 #[derive(Clone, Copy, Debug)]
@@ -98,7 +97,7 @@ impl MapIndex {
     pub(crate) unsafe fn new_allocate_uninit(
         cap: usize,
         on_err: OnError,
-    ) -> Result<Self, AllocError> {
+    ) -> Result<Self, MemoryError> {
         match Self::index_layout(cap) {
             Some((layout, slots_size)) => {
                 let mut alloc_ptr = AllocationPointer::new();
@@ -109,7 +108,7 @@ impl MapIndex {
                 }
                 Ok(Self { pointer: alloc_ptr })
             }
-            None => Err(on_err.overflow()),
+            None => Err(on_err.layout_err()),
         }
     }
 

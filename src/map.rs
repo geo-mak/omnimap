@@ -11,9 +11,9 @@ use core::{fmt, mem};
 
 use std::collections::hash_map::DefaultHasher;
 
-use crate::mem::pointers::AllocationPointer;
-use crate::mem::error::{AllocError, OnError};
 use crate::index::{MapIndex, Tag};
+use crate::mem::error::{MemoryError, OnError};
+use crate::mem::pointers::AllocationPointer;
 use crate::opt::OnDrop;
 use crate::opt::branch_hints::{likely, unlikely};
 
@@ -144,7 +144,7 @@ impl<K, V> MapCore<K, V> {
     ///
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
-    fn new_allocate_uninit(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, AllocError> {
+    fn new_allocate_uninit(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
         unsafe {
             let mut entries = AllocationPointer::new();
 
@@ -179,7 +179,7 @@ impl<K, V> MapCore<K, V> {
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
     #[inline(always)]
-    fn new_allocate_init(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, AllocError> {
+    fn new_allocate_init(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
         let mut instance = Self::new_allocate_uninit(cap, on_err)?;
         unsafe { instance.index.set_tags_empty(cap) };
         Ok(instance)
@@ -197,7 +197,7 @@ impl<K, V> MapCore<K, V> {
         &mut self,
         new_cap: usize,
         on_err: OnError,
-    ) -> Result<(), AllocError> {
+    ) -> Result<(), MemoryError> {
         debug_assert!(self.len == 0);
         let mut new_data = Self::new_allocate_init(new_cap, on_err)?;
         mem::swap(self, &mut new_data);
@@ -217,7 +217,7 @@ impl<K, V> MapCore<K, V> {
         &mut self,
         new_cap: usize,
         on_err: OnError,
-    ) -> Result<(), AllocError> {
+    ) -> Result<(), MemoryError> {
         let mut new_data = Self::new_allocate_init(new_cap, on_err)?;
 
         let current_len = self.len;
@@ -272,13 +272,17 @@ impl<K, V> MapCore<K, V> {
     /// Tries to reserve `additional` capacity.
     ///
     /// All internal calls are checked, with result depends on the error handling context `on_err`.
-    fn reserve_additional(&mut self, additional: usize, on_err: OnError) -> Result<(), AllocError> {
+    fn reserve_additional(
+        &mut self,
+        additional: usize,
+        on_err: OnError,
+    ) -> Result<(), MemoryError> {
         if likely(additional != 0) {
             let extra_cap = Self::allocation_capacity(additional, on_err)?;
             if likely(self.cap != 0) {
                 match self.cap.checked_add(extra_cap) {
                     Some(new_cap) => unsafe { self.reallocate_reindex(new_cap, on_err) },
-                    None => Err(on_err.overflow()),
+                    None => Err(on_err.layout_err()),
                 }
             } else {
                 match Self::new_allocate_init(extra_cap, on_err) {
@@ -340,13 +344,13 @@ impl<K, V> MapCore<K, V> {
     ///
     /// This method checks for arithmetic overflow.
     #[inline(always)]
-    const fn allocation_capacity(given: usize, on_err: OnError) -> Result<usize, AllocError> {
+    const fn allocation_capacity(given: usize, on_err: OnError) -> Result<usize, MemoryError> {
         if let Some(plus_one) = given.checked_add(1)
             && let Some(mul_eight) = plus_one.checked_mul(8)
         {
             return Ok(mul_eight / 7);
         }
-        Err(on_err.overflow())
+        Err(on_err.layout_err())
     }
 
     /// Returns the next power of two of the current capacity.
@@ -845,7 +849,7 @@ impl<K, V> OmniMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use omnimap::{AllocError, OmniMap};
+    /// use omnimap::{MemoryError, OmniMap};
     ///
     /// let mut map = OmniMap::new();
     ///
@@ -856,7 +860,7 @@ impl<K, V> OmniMap<K, V> {
     /// let mut result = map.try_reserve(usize::MAX);
     ///
     /// // Result must be error.
-    /// assert!(matches!(result.err().unwrap(), AllocError::Overflow));
+    /// assert!(matches!(result.err().unwrap(), MemoryError::LayoutErr));
     ///
     /// // The capacity remains 3
     /// assert_eq!(map.capacity(), 3);
@@ -870,7 +874,7 @@ impl<K, V> OmniMap<K, V> {
     /// assert_eq!(map.capacity(), 14);
     /// ```
     #[inline]
-    pub fn try_reserve(&mut self, additional: usize) -> Result<(), AllocError> {
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), MemoryError> {
         self.core.reserve_additional(additional, OnError::ReturnErr)
     }
 

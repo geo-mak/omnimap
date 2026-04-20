@@ -1,34 +1,35 @@
 use core::alloc::Layout;
+
 use std::alloc::handle_alloc_error;
 
 #[derive(Clone, Copy, Debug)]
-pub enum AllocError {
-    Overflow,
+pub enum MemoryError {
+    LayoutErr,
     AllocatorErr,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum OnError {
+pub enum OnError {
     Panic,
     ReturnErr,
 }
 
 impl OnError {
-    /// Handles `Overflow` error according to the current variant.
+    /// Handles a layout-error according to the current variant.
     #[inline]
-    pub(crate) const fn overflow(&self) -> AllocError {
+    pub const fn layout_err(&self) -> MemoryError {
         match self {
-            OnError::Panic => panic!("Allocation Error: capacity overflow"),
-            OnError::ReturnErr => AllocError::Overflow,
+            OnError::Panic => panic!("layout error"),
+            OnError::ReturnErr => MemoryError::LayoutErr,
         }
     }
 
-    /// Handles `AllocatorErr` according to the current variant.
+    /// Handles an allocator-error according to the current variant.
     #[inline]
-    pub(crate) fn alloc_err(&self, layout: Layout) -> AllocError {
+    pub fn allocator_err(&self, layout: Layout) -> MemoryError {
         match self {
             OnError::Panic => handle_alloc_error(layout),
-            OnError::ReturnErr => AllocError::AllocatorErr,
+            OnError::ReturnErr => MemoryError::AllocatorErr,
         }
     }
 }

@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod map_tests {
-    use crate::mem::error::AllocError;
     use crate::index::Tag;
     use crate::map::{OmniMap, OmniMapIterator};
+    use crate::mem::error::MemoryError;
     use core::cell::RefCell;
     use std::hash::Hash;
     use std::rc::Rc;
@@ -567,7 +567,7 @@ mod map_tests {
         assert_eq!(map.get(&2), None);
     }
 
-    #[should_panic(expected = "Allocation Error: capacity overflow")]
+    #[should_panic(expected = "layout error")]
     #[test]
     fn test_map_capacity_reserve_err() {
         let mut map: OmniMap<u8, u8> = OmniMap::new();
@@ -590,7 +590,7 @@ mod map_tests {
 
         let result = map.try_reserve(usize::MAX);
 
-        assert!(matches!(result.err().unwrap(), AllocError::Overflow));
+        assert!(matches!(result.err().unwrap(), MemoryError::LayoutErr));
         assert_eq!(map.capacity(), 1);
         assert_eq!(map.allocated_capacity(), 2);
         assert_eq!(map.available_capacity(), 0);
