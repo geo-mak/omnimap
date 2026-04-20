@@ -101,7 +101,7 @@ pub(crate) struct AllocationPointer<T> {
 impl<T> AllocationPointer<T> {
     pub(crate) const T_SIZE: usize = size_of::<T>();
     pub(crate) const T_ALIGN: usize = align_of::<T>();
-    pub(crate) const T_MAX_ALLOC_SIZE: usize = (isize::MAX as usize + 1) - Self::T_ALIGN;
+    pub const MAX_LAYOUT_SIZE: usize = (isize::MAX as usize + 1) - Self::T_ALIGN;
 
     /// Creates a new pointer set to `null`.
     #[must_use]
@@ -180,7 +180,7 @@ impl<T> AllocationPointer<T> {
             #[cfg(debug_assertions)]
             debug_assert_non_zero_size(size);
 
-            if size > Self::T_MAX_ALLOC_SIZE {
+            if size > Self::MAX_LAYOUT_SIZE {
                 return Err(on_err.layout_err());
             };
 
