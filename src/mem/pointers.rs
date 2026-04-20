@@ -297,7 +297,7 @@ impl<T> UnmanagedPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        self.ptr as *const C
+        self.ptr.cast::<C>()
     }
 
     /// Returns the base pointer as a mutable pointer of type `C`.
@@ -307,7 +307,7 @@ impl<T> UnmanagedPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        self.ptr as *mut C
+        self.ptr.cast::<C>()
     }
 
     /// Sets the base pointer at current offset plus `t_offset` of the strides of `T`.
