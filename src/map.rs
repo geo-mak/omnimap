@@ -224,8 +224,8 @@ impl<K, V> MapCore<K, V> {
 
         unsafe {
             core::ptr::copy_nonoverlapping(
-                self.entries.ptr(),
-                new_data.entries.ptr_mut(),
+                self.entries.as_ptr(),
+                new_data.entries.as_ptr_mut(),
                 current_len,
             )
         };
@@ -1275,7 +1275,7 @@ where
             instance
                 .core
                 .entries
-                .clone_from(self.core.entries.ptr(), current_len);
+                .clone_from(self.core.entries.as_ptr(), current_len);
 
             instance.core.len = current_len;
 
@@ -1307,7 +1307,7 @@ where
             instance
                 .core
                 .entries
-                .clone_from(self.core.entries.ptr(), current_len);
+                .clone_from(self.core.entries.as_ptr(), current_len);
 
             instance.core.len = current_len;
 

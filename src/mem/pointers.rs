@@ -273,7 +273,7 @@ impl<T> UnmanagedPointer<T> {
     /// Returns the base pointer.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn ptr(&self) -> *const T {
+    pub(crate) const unsafe fn as_ptr(&self) -> *const T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
@@ -283,7 +283,7 @@ impl<T> UnmanagedPointer<T> {
     /// Returns the base pointer as mutable pointer.
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn ptr_mut(&self) -> *mut T {
+    pub(crate) const unsafe fn as_ptr_mut(&self) -> *mut T {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
