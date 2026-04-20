@@ -148,7 +148,7 @@ impl<K, V> MapCore<K, V> {
         unsafe {
             let mut entries = UnmanagedPointer::new();
 
-            let layout = entries.make_layout(cap, on_err)?;
+            let layout = entries.layout_of(cap, on_err)?;
 
             let mut index = MapIndex::new_allocate_uninit(cap, on_err)?;
 
@@ -315,7 +315,7 @@ impl<K, V> MapCore<K, V> {
     #[inline]
     unsafe fn deallocate(&mut self) {
         unsafe {
-            let layout = self.entries.make_layout_unchecked(self.cap);
+            let layout = self.entries.layout_unchecked_of(self.cap);
             self.entries.deallocate(layout);
             self.index.deallocate(self.cap);
         }
@@ -1913,7 +1913,7 @@ impl<K, V> Drop for OmniMapIterator<K, V> {
             }
 
             // Infallible, uncontrolled. Already allocated.
-            let layout = self.entries.make_layout_unchecked(self.cap);
+            let layout = self.entries.layout_unchecked_of(self.cap);
             self.entries.deallocate(layout);
         }
     }
