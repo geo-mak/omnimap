@@ -50,7 +50,7 @@ pub(crate) struct MapIndex {
 impl MapIndex {
     const T_SIZE: usize = size_of::<usize>();
     const T_ALIGN: usize = align_of::<usize>();
-    const T_MAX_ALLOC_SIZE: usize = (isize::MAX as usize + 1) - Self::T_ALIGN;
+    const MAX_LAYOUT_SIZE: usize = (isize::MAX as usize + 1) - Self::T_ALIGN;
 
     /// Returns the `(aligned layout, slots size)` of the index for a given capacity `cap`.
     /// Size and alignment are calculated for `usize`.
@@ -61,7 +61,7 @@ impl MapIndex {
         let slots_size = cap.checked_mul(Self::T_SIZE)?;
         let aligned_tags = (cap + Self::T_ALIGN - 1) & !(Self::T_ALIGN - 1);
         let total_size = slots_size.checked_add(aligned_tags)?;
-        if total_size > Self::T_MAX_ALLOC_SIZE {
+        if total_size > Self::MAX_LAYOUT_SIZE {
             return None;
         }
         let layout = unsafe { Layout::from_size_align_unchecked(total_size, Self::T_ALIGN) };
