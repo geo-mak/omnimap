@@ -5,7 +5,7 @@ use core::ptr;
 
 use std::alloc::{self, alloc};
 
-use crate::error::{AllocError, OnError};
+use crate::mem::error::{AllocError, OnError};
 use crate::opt::OnDrop;
 use crate::opt::branch_hints::likely;
 

@@ -1,8 +1,8 @@
 use core::alloc::Layout;
 
 use crate::AllocError;
-use crate::alloc::AllocationPointer;
-use crate::error::OnError;
+use crate::mem::pointers::AllocationPointer;
+use crate::mem::error::OnError;
 
 /// The state of the slot in the index.
 #[derive(Clone, Copy, Debug)]

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod map_tests {
-    use crate::error::AllocError;
+    use crate::mem::error::AllocError;
     use crate::index::Tag;
     use crate::map::{OmniMap, OmniMapIterator};
     use core::cell::RefCell;

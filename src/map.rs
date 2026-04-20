@@ -11,8 +11,8 @@ use core::{fmt, mem};
 
 use std::collections::hash_map::DefaultHasher;
 
-use crate::alloc::AllocationPointer;
-use crate::error::{AllocError, OnError};
+use crate::mem::pointers::AllocationPointer;
+use crate::mem::error::{AllocError, OnError};
 use crate::index::{MapIndex, Tag};
 use crate::opt::OnDrop;
 use crate::opt::branch_hints::{likely, unlikely};
