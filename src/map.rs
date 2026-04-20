@@ -13,7 +13,7 @@ use std::collections::hash_map::DefaultHasher;
 
 use crate::index::{MapIndex, Tag};
 use crate::mem::error::{MemoryError, OnError};
-use crate::mem::pointers::AllocationPointer;
+use crate::mem::pointers::UnmanagedPointer;
 use crate::opt::OnDrop;
 use crate::opt::branch_hints::{likely, unlikely};
 
@@ -116,7 +116,7 @@ pub type ValuesIteratorMut<'a, K, V> =
 /// Stores the fields of the map and allocates/deallocates its pointers.
 /// It does't implement `Drop`. Deallocation is manual.
 struct MapCore<K, V> {
-    entries: AllocationPointer<Entry<K, V>>,
+    entries: UnmanagedPointer<Entry<K, V>>,
     index: MapIndex,
     cap: usize,
     len: usize,
@@ -128,7 +128,7 @@ impl<K, V> MapCore<K, V> {
     const fn new() -> Self {
         Self {
             // Unallocated pointers.
-            entries: AllocationPointer::new(),
+            entries: UnmanagedPointer::new(),
             index: MapIndex::new(),
             cap: 0,
             len: 0,
@@ -146,7 +146,7 @@ impl<K, V> MapCore<K, V> {
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
     fn new_allocate_uninit(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
         unsafe {
-            let mut entries = AllocationPointer::new();
+            let mut entries = UnmanagedPointer::new();
 
             let layout = entries.make_layout(cap, on_err)?;
 
@@ -1843,7 +1843,7 @@ impl<'a, K, V> IntoIterator for &'a mut OmniMap<K, V> {
 
 /// An owning iterator over the entries of the map.
 pub struct OmniMapIterator<K, V> {
-    entries: AllocationPointer<Entry<K, V>>,
+    entries: UnmanagedPointer<Entry<K, V>>,
     cap: usize,
     offset: usize,
     end: usize,
@@ -1853,7 +1853,7 @@ impl<K, V> OmniMapIterator<K, V> {
     #[inline]
     const fn new() -> Self {
         Self {
-            entries: AllocationPointer::new(),
+            entries: UnmanagedPointer::new(),
             cap: 0,
             end: 0,
             offset: 0,
@@ -1947,7 +1947,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         }
 
         let mut iterator = OmniMapIterator {
-            entries: AllocationPointer::new(),
+            entries: UnmanagedPointer::new(),
             cap: self.core.cap,
             end: self.core.len,
             offset: 0,

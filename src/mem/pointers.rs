@@ -65,7 +65,7 @@ const fn debug_layout_size_align(size: usize, align: usize) {
 /// - The pointer must not be null.
 ///
 #[cfg(debug_assertions)]
-const fn debug_assert_allocated<T>(instance: &AllocationPointer<T>) {
+const fn debug_assert_allocated<T>(instance: &UnmanagedPointer<T>) {
     assert!(!instance.ptr.is_null(), "Pointer must not be null");
 }
 
@@ -77,13 +77,15 @@ const fn debug_assert_allocated<T>(instance: &AllocationPointer<T>) {
 /// - The pointer must be null.
 ///
 #[cfg(debug_assertions)]
-const fn debug_assert_not_allocated<T>(instance: &AllocationPointer<T>) {
+const fn debug_assert_not_allocated<T>(instance: &UnmanagedPointer<T>) {
     assert!(instance.ptr.is_null(), "Pointer must be null");
 }
 
 /// An indirect reference to _one or more_ values of type `T` consecutively in memory,
 /// with set of methods for accessing and managing memory directly.
 ///
+/// It extends the common pointer operations with more operations that simplify the development of custom data structures.
+///  
 /// It doesn't store any metadata about its allocated memory, such as the size of
 /// the allocated memory and the number of initialized elements, therefore it doesn't provide
 /// checked operations or automatic memory management.
@@ -93,12 +95,12 @@ const fn debug_assert_not_allocated<T>(instance: &AllocationPointer<T>) {
 /// It uses the registered `#[global_allocator]` to allocate memory.
 ///
 /// Using custom allocators will be supported in the future.
-pub(crate) struct AllocationPointer<T> {
+pub(crate) struct UnmanagedPointer<T> {
     ptr: *mut T,
-    _marker: PhantomData<T>,
+    _t: PhantomData<T>,
 }
 
-impl<T> AllocationPointer<T> {
+impl<T> UnmanagedPointer<T> {
     pub(crate) const T_SIZE: usize = size_of::<T>();
     pub(crate) const T_ALIGN: usize = align_of::<T>();
     pub const MAX_LAYOUT_SIZE: usize = (isize::MAX as usize + 1) - Self::T_ALIGN;
@@ -107,9 +109,9 @@ impl<T> AllocationPointer<T> {
     #[must_use]
     #[inline]
     pub(crate) const fn new() -> Self {
-        AllocationPointer {
+        UnmanagedPointer {
             ptr: ptr::null_mut(),
-            _marker: PhantomData,
+            _t: PhantomData,
         }
     }
 
@@ -128,10 +130,10 @@ impl<T> AllocationPointer<T> {
     ///
     #[must_use]
     #[inline(always)]
-    pub(crate) const unsafe fn duplicate(&mut self) -> AllocationPointer<T> {
-        AllocationPointer {
+    pub(crate) const unsafe fn duplicate(&mut self) -> UnmanagedPointer<T> {
+        UnmanagedPointer {
             ptr: self.ptr,
-            _marker: PhantomData,
+            _t: PhantomData,
         }
     }
 
@@ -694,17 +696,17 @@ mod alloc_ptr_tests {
 
     #[test]
     fn test_alloc_ptr_new() {
-        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         assert!(alloc_ptr.is_null());
     }
 
     #[test]
     fn test_alloc_ptr_make_layout_unchecked_ok() {
-        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         unsafe {
             let layout = alloc_ptr.make_layout_unchecked(3);
             assert_eq!(layout.size(), 3);
-            assert_eq!(layout.align(), AllocationPointer::<u8>::T_ALIGN);
+            assert_eq!(layout.align(), UnmanagedPointer::<u8>::T_ALIGN);
         }
     }
 
@@ -712,7 +714,7 @@ mod alloc_ptr_tests {
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Allocation size must be greater than 0")]
     fn test_alloc_ptr_make_layout_unchecked_zero_size() {
-        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         unsafe {
             let _ = alloc_ptr.make_layout_unchecked(0);
         }
@@ -722,7 +724,7 @@ mod alloc_ptr_tests {
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Allocation size exceeds maximum limit on this platform")]
     fn test_alloc_ptr_make_layout_unchecked_invalid_size() {
-        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         unsafe {
             let _ = alloc_ptr.make_layout_unchecked(isize::MAX as usize + 1);
         }
@@ -730,11 +732,11 @@ mod alloc_ptr_tests {
 
     #[test]
     fn test_alloc_ptr_make_layout_ok() {
-        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         unsafe {
             let layout = alloc_ptr.make_layout(3, OnError::Panic).unwrap();
             assert_eq!(layout.size(), 3);
-            assert_eq!(layout.align(), AllocationPointer::<u8>::T_ALIGN);
+            assert_eq!(layout.align(), UnmanagedPointer::<u8>::T_ALIGN);
         }
     }
 
@@ -742,7 +744,7 @@ mod alloc_ptr_tests {
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Allocation size must be greater than 0")]
     fn test_alloc_ptr_make_layout_zero_size_panic() {
-        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         unsafe {
             let _ = alloc_ptr.make_layout(0, OnError::Panic);
         }
@@ -751,7 +753,7 @@ mod alloc_ptr_tests {
     #[test]
     #[should_panic(expected = "layout error")]
     fn test_alloc_ptr_make_layout_overflow_panic() {
-        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         unsafe {
             let _ = alloc_ptr.make_layout(usize::MAX, OnError::Panic);
         }
@@ -759,7 +761,7 @@ mod alloc_ptr_tests {
 
     #[test]
     fn test_alloc_ptr_make_layout_return_err() {
-        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         unsafe {
             let result = alloc_ptr.make_layout(usize::MAX, OnError::ReturnErr);
             assert!(result.is_err());
@@ -770,7 +772,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_new_allocate() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -782,7 +784,7 @@ mod alloc_ptr_tests {
 
     #[test]
     fn test_alloc_ptr_allocate() {
-        let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
 
         unsafe {
             let layout = alloc_ptr.make_layout_unchecked(3);
@@ -800,7 +802,7 @@ mod alloc_ptr_tests {
     #[should_panic(expected = "Pointer must be null")]
     #[cfg_attr(miri, ignore)]
     fn test_alloc_ptr_allocate_allocated() {
-        let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         unsafe {
             let layout = alloc_ptr.make_layout_unchecked(1);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
@@ -814,7 +816,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_allocate_deallocate() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
 
             let layout = alloc_ptr.make_layout_unchecked(3);
 
@@ -831,7 +833,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_memset_zero() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -856,7 +858,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_store_access() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -875,7 +877,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_access_mut() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -893,7 +895,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_access_first() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -909,7 +911,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_rfo() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -927,7 +929,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_shift_left() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(5);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -950,7 +952,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_move_one() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -972,7 +974,7 @@ mod alloc_ptr_tests {
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Pointer must not be null")]
     fn test_alloc_ptr_as_slice_null_ptr() {
-        let alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         let slice = unsafe { alloc_ptr.as_slice(0) };
         assert_eq!(slice, &[]);
     }
@@ -980,7 +982,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_as_slice_empty() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -994,7 +996,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_as_slice() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -1013,7 +1015,7 @@ mod alloc_ptr_tests {
     #[cfg(debug_assertions)]
     #[should_panic(expected = "Pointer must not be null")]
     fn test_alloc_ptr_as_slice_mut_null_ptr() {
-        let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+        let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         let slice = unsafe { alloc_ptr.as_slice_mut(0) };
         assert_eq!(slice, &mut []);
     }
@@ -1021,7 +1023,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_as_slice_mut_empty() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -1035,7 +1037,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_as_slice_mut() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -1066,7 +1068,7 @@ mod alloc_ptr_tests {
         let drop_count = Rc::new(RefCell::new(0));
 
         unsafe {
-            let mut alloc_ptr: AllocationPointer<DropCounter> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<DropCounter> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -1096,7 +1098,7 @@ mod alloc_ptr_tests {
     #[cfg_attr(miri, ignore)]
     fn test_alloc_ptr_drop_range_invalid() {
         unsafe {
-            let mut alloc_ptr: AllocationPointer<u8> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(5);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
             alloc_ptr.drop_range(0..0);
@@ -1109,7 +1111,7 @@ mod alloc_ptr_tests {
         let drop_count = Rc::new(RefCell::new(0));
 
         unsafe {
-            let mut alloc_ptr: AllocationPointer<DropCounter> = AllocationPointer::new();
+            let mut alloc_ptr: UnmanagedPointer<DropCounter> = UnmanagedPointer::new();
             let layout = alloc_ptr.make_layout_unchecked(5);
             let _ = alloc_ptr.allocate(layout, OnError::Panic);
 
@@ -1133,7 +1135,7 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_clone_from() {
         unsafe {
-            let mut source: AllocationPointer<u8> = AllocationPointer::new();
+            let mut source: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = source.make_layout_unchecked(3);
             let _ = source.allocate(layout, OnError::Panic);
 
@@ -1141,7 +1143,7 @@ mod alloc_ptr_tests {
                 source.store(i, i as u8 + 1);
             }
 
-            let mut target: AllocationPointer<u8> = AllocationPointer::new();
+            let mut target: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let _ = target.allocate(layout, OnError::Panic);
 
             target.clone_from(source.ptr, 3);
@@ -1183,8 +1185,8 @@ mod alloc_ptr_tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_alloc_ptr_clone_from_safe_unwind() {
-        let mut source: AllocationPointer<PanicOnClone> = AllocationPointer::new();
-        let mut target: AllocationPointer<PanicOnClone> = AllocationPointer::new();
+        let mut source: UnmanagedPointer<PanicOnClone> = UnmanagedPointer::new();
+        let mut target: UnmanagedPointer<PanicOnClone> = UnmanagedPointer::new();
         unsafe {
             let layout = source.make_layout_unchecked(10);
             let _ = source.allocate(layout, OnError::Panic);
@@ -1201,10 +1203,10 @@ mod alloc_ptr_tests {
             }
 
             let source_ptr = source.ptr as *const ();
-            let target_ptr = &mut target as *mut AllocationPointer<PanicOnClone> as *mut ();
+            let target_ptr = &mut target as *mut UnmanagedPointer<PanicOnClone> as *mut ();
 
             let result = std::panic::catch_unwind(move || {
-                let target = &mut *(target_ptr as *mut AllocationPointer<PanicOnClone>);
+                let target = &mut *(target_ptr as *mut UnmanagedPointer<PanicOnClone>);
                 let source = source_ptr as *const PanicOnClone;
                 target.clone_from(source, 10);
             });

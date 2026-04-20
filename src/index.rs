@@ -1,7 +1,7 @@
 use core::alloc::Layout;
 
 use crate::mem::error::{MemoryError, OnError};
-use crate::mem::pointers::AllocationPointer;
+use crate::mem::pointers::UnmanagedPointer;
 
 /// The state of the slot in the index.
 #[derive(Clone, Copy, Debug)]
@@ -44,7 +44,7 @@ pub(crate) struct MapIndex {
     // | Tag: A single byte as flag to store slot's state.                               |
     // | Index: The offset of an entry to be accessed at.                                |
     // -----------------------------------------------------------------------------------
-    pointer: AllocationPointer<u8>,
+    pointer: UnmanagedPointer<u8>,
 }
 
 impl MapIndex {
@@ -85,7 +85,7 @@ impl MapIndex {
     #[inline(always)]
     pub(crate) const fn new() -> Self {
         Self {
-            pointer: AllocationPointer::new(),
+            pointer: UnmanagedPointer::new(),
         }
     }
 
@@ -100,7 +100,7 @@ impl MapIndex {
     ) -> Result<Self, MemoryError> {
         match Self::index_layout(cap) {
             Some((layout, slots_size)) => {
-                let mut alloc_ptr = AllocationPointer::new();
+                let mut alloc_ptr = UnmanagedPointer::new();
                 unsafe {
                     alloc_ptr.allocate(layout, on_err)?;
                     // Set the pointer at the offset of the control tags.
