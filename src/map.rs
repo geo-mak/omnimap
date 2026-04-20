@@ -144,7 +144,7 @@ impl<K, V> MapCore<K, V> {
     ///
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
-    fn new_allocate_uninit(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
+    fn new_acquire_uninit(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
         unsafe {
             let mut entries = UnmanagedPointer::new();
 
@@ -179,8 +179,8 @@ impl<K, V> MapCore<K, V> {
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
     #[inline(always)]
-    fn new_allocate_init(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
-        let mut instance = Self::new_allocate_uninit(cap, on_err)?;
+    fn new_acquire_init(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
+        let mut instance = Self::new_acquire_uninit(cap, on_err)?;
         unsafe { instance.index.reset_tags(cap) };
         Ok(instance)
     }
@@ -193,15 +193,15 @@ impl<K, V> MapCore<K, V> {
     /// - The map is already allocated.
     /// - The map must be empty.
     #[inline]
-    unsafe fn reallocate_empty(
+    unsafe fn adjust_unused_layout(
         &mut self,
         new_cap: usize,
         on_err: OnError,
     ) -> Result<(), MemoryError> {
         debug_assert!(self.len == 0);
-        let mut new_data = Self::new_allocate_init(new_cap, on_err)?;
+        let mut new_data = Self::new_acquire_init(new_cap, on_err)?;
         mem::swap(self, &mut new_data);
-        unsafe { new_data.deallocate() }
+        unsafe { new_data.release() }
         Ok(())
     }
 
@@ -213,12 +213,12 @@ impl<K, V> MapCore<K, V> {
     /// On error, the map's state will not be affected.
     ///
     /// Safety: This method should be called only when the map is already allocated.
-    unsafe fn reallocate_reindex(
+    unsafe fn adjust_used_layout(
         &mut self,
         new_cap: usize,
         on_err: OnError,
     ) -> Result<(), MemoryError> {
-        let mut new_data = Self::new_allocate_init(new_cap, on_err)?;
+        let mut new_data = Self::new_acquire_init(new_cap, on_err)?;
 
         let current_len = self.len;
 
@@ -238,7 +238,7 @@ impl<K, V> MapCore<K, V> {
 
         mem::swap(self, &mut new_data);
 
-        unsafe { new_data.deallocate() }
+        unsafe { new_data.release() }
 
         Ok(())
     }
@@ -248,7 +248,7 @@ impl<K, V> MapCore<K, V> {
     /// This method panics when overflow occurs or when allocation fails.
     ///
     /// This function shall be called only if the map is considered full.
-    fn reclaim_or_reserve(&mut self) {
+    fn reclaim_or_acquire(&mut self) {
         if self.len < self.cap >> 1 {
             // Reclaiming deleted slots without reallocation.
             self.reindex();
@@ -256,12 +256,12 @@ impl<K, V> MapCore<K, V> {
             // Reallocation.
             if likely(self.cap != 0) {
                 let new_cap = self.capacity_next_power_of_two();
-                match unsafe { self.reallocate_reindex(new_cap, OnError::Panic) } {
+                match unsafe { self.adjust_used_layout(new_cap, OnError::Panic) } {
                     Ok(_) => (),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
             } else {
-                match MapCore::new_allocate_init(4, OnError::Panic) {
+                match MapCore::new_acquire_init(4, OnError::Panic) {
                     Ok(mut data) => mem::swap(self, &mut data),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
@@ -272,7 +272,7 @@ impl<K, V> MapCore<K, V> {
     /// Tries to reserve `additional` capacity.
     ///
     /// All internal calls are checked, with result depends on the error handling context `on_err`.
-    fn reserve_additional(
+    fn acquire_additional(
         &mut self,
         additional: usize,
         on_err: OnError,
@@ -281,11 +281,11 @@ impl<K, V> MapCore<K, V> {
             let extra_cap = Self::allocation_capacity(additional, on_err)?;
             if likely(self.cap != 0) {
                 match self.cap.checked_add(extra_cap) {
-                    Some(new_cap) => unsafe { self.reallocate_reindex(new_cap, on_err) },
+                    Some(new_cap) => unsafe { self.adjust_used_layout(new_cap, on_err) },
                     None => Err(on_err.layout_err()),
                 }
             } else {
-                match Self::new_allocate_init(extra_cap, on_err) {
+                match Self::new_acquire_init(extra_cap, on_err) {
                     Ok(mut data) => {
                         mem::swap(self, &mut data);
                         Ok(())
@@ -313,7 +313,7 @@ impl<K, V> MapCore<K, V> {
     ///
     /// Safety: Data must be allocated before calling this method.
     #[inline]
-    unsafe fn deallocate(&mut self) {
+    unsafe fn release(&mut self) {
         unsafe {
             let layout = self.entries.layout_unchecked_of(self.cap);
             self.entries.release(layout);
@@ -622,7 +622,7 @@ impl<K, V> Drop for OmniMap<K, V> {
         unsafe {
             // This call is safe even if the length is zero.
             self.core.drop_initialized();
-            self.core.deallocate();
+            self.core.release();
         }
     }
 }
@@ -647,7 +647,7 @@ impl<K, V> Default for OmniMap<K, V> {
     #[inline]
     fn default() -> Self {
         unsafe {
-            match MapCore::new_allocate_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
+            match MapCore::new_acquire_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
                 Ok(data) => Self { core: data },
                 Err(_) => unreachable_unchecked(),
             }
@@ -707,7 +707,7 @@ impl<K, V> OmniMap<K, V> {
                 Err(_) => unreachable_unchecked(),
             };
 
-            match MapCore::new_allocate_init(cap, OnError::Panic) {
+            match MapCore::new_acquire_init(cap, OnError::Panic) {
                 Ok(core) => OmniMap { core },
                 Err(_) => unreachable_unchecked(),
             }
@@ -825,7 +825,7 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        match self.core.reserve_additional(additional, OnError::Panic) {
+        match self.core.acquire_additional(additional, OnError::Panic) {
             Ok(_) => (),
             // Hints the compiler that the error branch can be eliminated from the call chain.
             Err(_) => unsafe { unreachable_unchecked() },
@@ -875,7 +875,7 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     #[inline]
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), MemoryError> {
-        self.core.reserve_additional(additional, OnError::ReturnErr)
+        self.core.acquire_additional(additional, OnError::ReturnErr)
     }
 
     /// Returns the first entry in the map.
@@ -983,7 +983,7 @@ impl<K, V> OmniMap<K, V> {
         if max_cap < self.capacity() {
             if max_cap == 0 {
                 unsafe {
-                    self.core.deallocate();
+                    self.core.release();
                     self.core.cap = 0;
                     self.core.free = 0;
                 };
@@ -991,9 +991,9 @@ impl<K, V> OmniMap<K, V> {
             }
             let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(max_cap);
             let result = if current_len == 0 {
-                unsafe { self.core.reallocate_empty(new_cap, OnError::Panic) }
+                unsafe { self.core.adjust_unused_layout(new_cap, OnError::Panic) }
             } else {
-                unsafe { self.core.reallocate_reindex(new_cap, OnError::Panic) }
+                unsafe { self.core.adjust_used_layout(new_cap, OnError::Panic) }
             };
             match result {
                 Ok(_) => (),
@@ -1033,14 +1033,14 @@ impl<K, V> OmniMap<K, V> {
         if current_len < self.capacity() {
             if current_len == 0 {
                 unsafe {
-                    self.core.deallocate();
+                    self.core.release();
                     self.core.cap = 0;
                     self.core.free = 0;
                 };
                 return;
             }
             let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
-            match unsafe { self.core.reallocate_reindex(new_cap, OnError::Panic) } {
+            match unsafe { self.core.adjust_used_layout(new_cap, OnError::Panic) } {
                 Ok(_) => (),
                 Err(_) => unsafe { unreachable_unchecked() },
             }
@@ -1259,7 +1259,7 @@ where
         let current_cap = self.core.cap;
         let current_len = self.core.len;
 
-        let core = match MapCore::new_allocate_init(current_cap, OnError::Panic) {
+        let core = match MapCore::new_acquire_init(current_cap, OnError::Panic) {
             Ok(instance) => instance,
             Err(_) => unsafe { unreachable_unchecked() },
         };
@@ -1291,7 +1291,7 @@ where
 
         let compact_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
 
-        let core = match MapCore::new_allocate_init(compact_cap, OnError::Panic) {
+        let core = match MapCore::new_acquire_init(compact_cap, OnError::Panic) {
             Ok(instance) => instance,
             Err(_) => unsafe { unreachable_unchecked() },
         };
@@ -1427,7 +1427,7 @@ where
     #[inline]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if unlikely(self.core.free == 0) {
-            self.core.reclaim_or_reserve();
+            self.core.reclaim_or_acquire();
         }
 
         let hash = MapCore::<K, V>::make_hash(&key);
