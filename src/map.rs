@@ -154,7 +154,7 @@ impl<K, V> MapCore<K, V> {
 
             let error_guard = OnDrop::set(cap, |cap| index.deallocate(*cap));
 
-            entries.allocate(layout, on_err)?;
+            entries.acquire(layout, on_err)?;
 
             error_guard.finish();
 
@@ -316,7 +316,7 @@ impl<K, V> MapCore<K, V> {
     unsafe fn deallocate(&mut self) {
         unsafe {
             let layout = self.entries.layout_unchecked_of(self.cap);
-            self.entries.deallocate(layout);
+            self.entries.release(layout);
             self.index.deallocate(self.cap);
         }
     }
@@ -1914,7 +1914,7 @@ impl<K, V> Drop for OmniMapIterator<K, V> {
 
             // Infallible, uncontrolled. Already allocated.
             let layout = self.entries.layout_unchecked_of(self.cap);
-            self.entries.deallocate(layout);
+            self.entries.release(layout);
         }
     }
 }
