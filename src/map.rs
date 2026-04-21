@@ -1270,23 +1270,25 @@ where
         debug_assert!(core.cap == self.core.cap);
         debug_assert!(core.len == 0);
 
-        unsafe {
-            // On panic, instance's memory will be deallocated.
-            let mut instance = Self { core };
+        // On panic, instance's memory will be deallocated.
+        let mut instance = Self { core };
 
-            // Unwind-safe. On panic, cloned items will be dropped.
+        // Unwind-safe. On panic, cloned items will be dropped.
+        unsafe {
             instance
                 .core
                 .entries
-                .clone_from(self.core.entries.as_ptr(), current_len);
-
-            instance.core.len = current_len;
-
-            // Same index-state.
-            instance.core.free = self.core.free;
-            instance.core.index.copy_from(&self.core.index, current_cap);
-            instance
+                .clone_from(self.core.entries.as_ptr(), current_len)
         }
+
+        instance.core.len = current_len;
+
+        // Same index-state.
+        instance.core.free = self.core.free;
+
+        unsafe { instance.core.index.copy_from(&self.core.index, current_cap) }
+
+        instance
     }
 
     fn make_compact_clone(&self) -> Self {
@@ -1302,23 +1304,23 @@ where
         debug_assert!(core.cap == compact_cap);
         debug_assert!(core.len == 0);
 
-        unsafe {
-            // On panic, instance's memory will be deallocated.
-            let mut instance = Self { core };
+        // On panic, instance's memory will be deallocated.
+        let mut instance = Self { core };
 
-            // Unwind-safe. On panic, cloned items will be dropped.
+        // Unwind-safe. On panic, cloned items will be dropped.
+        unsafe {
             instance
                 .core
                 .entries
-                .clone_from(self.core.entries.as_ptr(), current_len);
-
-            instance.core.len = current_len;
-
-            // New index with usable cap set to len.
-            instance.core.free = 0;
-            instance.core.build_index();
-            instance
+                .clone_from(self.core.entries.as_ptr(), current_len)
         }
+
+        instance.core.len = current_len;
+
+        // New index with usable cap set to len.
+        instance.core.free = 0;
+        instance.core.build_index();
+        instance
     }
 
     /// Returns a compact clone of the current instance.
