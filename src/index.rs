@@ -8,8 +8,8 @@ use crate::mem::pointers::UnmanagedPointer;
 #[repr(u8)]
 pub(crate) enum Tag {
     Free = 0,
-    Discarded = 1,
-    Used = 2,
+    Used = 1,
+    Discarded = 2,
 }
 
 impl Tag {
