@@ -653,11 +653,9 @@ impl<K, V> Default for OmniMap<K, V> {
     /// ```
     #[inline]
     fn default() -> Self {
-        unsafe {
-            match MapCore::new_acquire_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
-                Ok(data) => Self { core: data },
-                Err(_) => unreachable_unchecked(),
-            }
+        match MapCore::new_acquire_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
+            Ok(data) => Self { core: data },
+            Err(_) => unsafe { unreachable_unchecked() },
         }
     }
 }
