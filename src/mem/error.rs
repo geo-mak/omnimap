@@ -9,7 +9,7 @@ pub enum MemoryError {
 }
 
 #[derive(Clone, Copy)]
-pub enum OnError {
+pub(crate) enum OnError {
     Panic,
     ReturnErr,
 }
@@ -17,7 +17,7 @@ pub enum OnError {
 impl OnError {
     /// Handles a layout-error according to the current variant.
     #[inline]
-    pub const fn layout_err(&self) -> MemoryError {
+    pub(crate) const fn layout_err(&self) -> MemoryError {
         match self {
             OnError::Panic => panic!("layout error"),
             OnError::ReturnErr => MemoryError::LayoutErr,
@@ -26,7 +26,7 @@ impl OnError {
 
     /// Handles an allocator-error according to the current variant.
     #[inline]
-    pub fn allocator_err(&self, layout: Layout) -> MemoryError {
+    pub(crate) fn allocator_err(&self, layout: Layout) -> MemoryError {
         match self {
             OnError::Panic => handle_alloc_error(layout),
             OnError::ReturnErr => MemoryError::AllocatorErr,
