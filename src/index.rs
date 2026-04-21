@@ -119,7 +119,7 @@ impl MapIndex {
                 unsafe {
                     pointer.acquire(layout, on_err)?;
                     // Set the pointer at the offset of the control tags.
-                    pointer.set_plus(slots_size);
+                    pointer.increment(slots_size);
                 }
 
                 Ok(Self { pointer })
@@ -140,7 +140,7 @@ impl MapIndex {
         unsafe {
             let (layout, slots_size) = Self::index_layout_unchecked(cap);
             // Reset the pointer to the start of the allocated memory.
-            self.pointer.set_minus(slots_size);
+            self.pointer.decrement(slots_size);
             self.pointer.release(layout)
         }
     }

@@ -380,22 +380,22 @@ impl<T> UnmanagedPointer<T> {
         self.ptr.cast::<C>()
     }
 
-    /// Sets the base pointer at current offset plus `t_offset` of the strides of `T`.
+    /// Increments the pointer's offset by `t_strides` as strides of `T`.
     #[inline(always)]
-    pub(crate) const unsafe fn set_plus(&mut self, t_offset: usize) {
+    pub(crate) const unsafe fn increment(&mut self, t_strides: usize) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { self.ptr = self.ptr.add(t_offset) };
+        unsafe { self.ptr = self.ptr.add(t_strides) };
     }
 
-    /// Sets the base pointer at current offset minus `t_offset` of the strides of `T`.
+    /// Decrements the pointer's offset by `t_strides` as strides of `T`.
     #[inline(always)]
-    pub(crate) const unsafe fn set_minus(&mut self, t_offset: usize) {
+    pub(crate) const unsafe fn decrement(&mut self, t_strides: usize) {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { self.ptr = self.ptr.sub(t_offset) };
+        unsafe { self.ptr = self.ptr.sub(t_strides) };
     }
 
     /// Writes `0` bytes to `count` values with the size of `T` in the allocated memory space
