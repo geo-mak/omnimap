@@ -124,6 +124,9 @@ struct MapCore<K, V> {
 }
 
 impl<K, V> MapCore<K, V> {
+    /// The initial allocation capacity of the map.
+    const INIT_TOTAL_CAP: usize = 4;
+
     #[inline(always)]
     const fn new() -> Self {
         Self {
@@ -261,7 +264,7 @@ impl<K, V> MapCore<K, V> {
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
             } else {
-                match MapCore::new_acquire_init(4, OnError::Panic) {
+                match MapCore::new_acquire_init(Self::INIT_TOTAL_CAP, OnError::Panic) {
                     Ok(mut data) => mem::swap(self, &mut data),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
