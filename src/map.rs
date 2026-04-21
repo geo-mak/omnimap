@@ -706,16 +706,14 @@ impl<K, V> OmniMap<K, V> {
             return Self::new();
         }
 
-        unsafe {
-            let cap = match MapCore::<K, V>::allocation_capacity(capacity, OnError::Panic) {
-                Ok(cap) => cap,
-                Err(_) => unreachable_unchecked(),
-            };
+        let cap = match MapCore::<K, V>::allocation_capacity(capacity, OnError::Panic) {
+            Ok(cap) => cap,
+            Err(_) => unsafe { unreachable_unchecked() },
+        };
 
-            match MapCore::new_acquire_init(cap, OnError::Panic) {
-                Ok(core) => OmniMap { core },
-                Err(_) => unreachable_unchecked(),
-            }
+        match MapCore::new_acquire_init(cap, OnError::Panic) {
+            Ok(core) => OmniMap { core },
+            Err(_) => unsafe { unreachable_unchecked() },
         }
     }
 
