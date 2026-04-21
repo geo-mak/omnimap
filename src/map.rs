@@ -747,9 +747,9 @@ impl<K, V> OmniMap<K, V> {
         self.core.cap
     }
 
-    /// Returns the remaining capacity.
+    /// Returns the remaining usable capacity.
     #[inline(always)]
-    pub const fn available_capacity(&self) -> usize {
+    pub const fn remaining_capacity(&self) -> usize {
         self.core.free
     }
 
