@@ -555,7 +555,9 @@ impl<K, V> MapCore<K, V> {
 
             unsafe {
                 self.index.store_tag(result.slot, Tag::Discarded);
-                let removed = self.entries.read_for_ownership(index).value;
+
+                // Safety: Keep it alive one piece, no destructors shall run before patching its "hole".
+                let removed = self.entries.read_for_ownership(index);
 
                 if likely(index != self.len) {
                     if SHIFT {
@@ -570,7 +572,8 @@ impl<K, V> MapCore<K, V> {
                     }
                 }
 
-                return Some(removed);
+                // Safety: The hole is patched. Entry is safe to destructure.
+                return Some(removed.value);
             };
         }
 
