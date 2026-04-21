@@ -550,7 +550,8 @@ impl<K, V> MapCore<K, V> {
             let index = result.entry;
 
             self.len -= 1;
-            // Deleted entries are currently not recoverable so self.free remains unchanged.
+
+            // Note: Deleted entries are currently not recoverable so self.free remains unchanged.
 
             unsafe {
                 self.index.store_tag(result.slot, Tag::Discarded);
