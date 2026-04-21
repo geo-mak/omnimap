@@ -64,13 +64,18 @@ impl MapIndex {
     #[inline]
     fn index_layout(cap: usize) -> Option<(Layout, usize)> {
         let slots_size = cap.checked_mul(Self::T_SIZE)?;
+
         let aligned_tags = (cap + Self::T_ALIGN - 1) & !(Self::T_ALIGN - 1);
+
         let total_size = slots_size.checked_add(aligned_tags)?;
+
         if total_size > Self::MAX_LAYOUT_SIZE {
             return None;
         }
+
         let layout = unsafe { Layout::from_size_align_unchecked(total_size, Self::T_ALIGN) };
-        return Some((layout, slots_size));
+
+        Some((layout, slots_size))
     }
 
     /// Returns the `(aligned layout, slots size)` of the index for a given capacity `cap`.
@@ -80,10 +85,14 @@ impl MapIndex {
     #[inline]
     const unsafe fn index_layout_unchecked(cap: usize) -> (Layout, usize) {
         let slots_size = cap * Self::T_SIZE;
+
         let aligned_tags = (cap + Self::T_ALIGN - 1) & !(Self::T_ALIGN - 1);
+
         let total_size = slots_size + aligned_tags;
+
         let layout = unsafe { Layout::from_size_align_unchecked(total_size, Self::T_ALIGN) };
-        return (layout, slots_size);
+
+        (layout, slots_size)
     }
 
     /// Creates new unallocated index.
@@ -105,13 +114,15 @@ impl MapIndex {
     ) -> Result<Self, MemoryError> {
         match Self::index_layout(cap) {
             Some((layout, slots_size)) => {
-                let mut alloc_ptr = UnmanagedPointer::new();
+                let mut pointer = UnmanagedPointer::new();
+
                 unsafe {
-                    alloc_ptr.acquire(layout, on_err)?;
+                    pointer.acquire(layout, on_err)?;
                     // Set the pointer at the offset of the control tags.
-                    alloc_ptr.set_plus(slots_size);
+                    pointer.set_plus(slots_size);
                 }
-                Ok(Self { pointer: alloc_ptr })
+
+                Ok(Self { pointer })
             }
             None => Err(on_err.layout_err()),
         }
@@ -143,6 +154,7 @@ impl MapIndex {
     #[inline]
     pub(crate) const unsafe fn copy_from(&mut self, source: &MapIndex, cap: usize) {
         let slots_size = cap * Self::T_SIZE;
+
         // Copy the useful data without the padding bytes.
         let unaligned_size = slots_size + cap;
 
