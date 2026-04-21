@@ -909,7 +909,7 @@ impl<K, V> OmniMap<K, V> {
             return None;
         }
 
-        let entry = unsafe { self.core.entries.reference_first() };
+        let entry = unsafe { self.core.entries.as_ref() };
 
         Some((&entry.key, &entry.value))
     }
@@ -1731,7 +1731,7 @@ where
         }
 
         // SAFETY: The map is not empty, so an entry must exist.
-        let entry_ref = unsafe { self.core.entries.reference_first() };
+        let entry_ref = unsafe { self.core.entries.as_ref() };
 
         let result = self.core.find(entry_ref.hash, &entry_ref.key);
 

@@ -379,6 +379,28 @@ impl<T> UnmanagedPointer<T> {
         unsafe { ptr::write((self.ptr).add(offset), value) };
     }
 
+    /// Returns a reference to the element where the current pointer is.
+    ///
+    /// # Safety
+    ///
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`..
+    ///
+    /// - The value at the current address must be an initialized value of type T.
+    ///   Accessing an uninitialized element as `T` is `undefined behavior`.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(1).
+    ///
+    #[must_use]
+    #[inline(always)]
+    pub(crate) const unsafe fn as_ref(&self) -> &T {
+        #[cfg(debug_assertions)]
+        debug_assert_allocated(self);
+
+        unsafe { &*self.ptr }
+    }
+
     /// Returns a reference to an element at the specified `offset`.
     ///
     /// # Safety
@@ -420,28 +442,6 @@ impl<T> UnmanagedPointer<T> {
         debug_assert_allocated(self);
 
         unsafe { &mut *(self.ptr).add(offset) }
-    }
-
-    /// Returns a reference to the element where the current pointer is.
-    ///
-    /// # Safety
-    ///
-    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`..
-    ///
-    /// - The value at the current address must be an initialized value of type T.
-    ///   Accessing an uninitialized element as `T` is `undefined behavior`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
-    ///
-    #[must_use]
-    #[inline(always)]
-    pub(crate) const unsafe fn reference_first(&self) -> &T {
-        #[cfg(debug_assertions)]
-        debug_assert_allocated(self);
-
-        unsafe { &*self.ptr }
     }
 
     /// Reads and returns the value at the specified `offset`.
@@ -897,7 +897,7 @@ mod alloc_ptr_tests {
             alloc_ptr.store(0, 1);
             alloc_ptr.store(1, 2);
 
-            assert_eq!(alloc_ptr.reference_first(), &1);
+            assert_eq!(alloc_ptr.as_ref(), &1);
 
             alloc_ptr.release(layout);
         }
