@@ -333,7 +333,9 @@ impl<T> UnmanagedPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { &*ptr::slice_from_raw_parts(self.ptr, count) }
+        let slice_ptr = ptr::slice_from_raw_parts(self.ptr, count);
+        
+        unsafe { &*slice_ptr }
     }
 
     /// Returns a mutable slice over `count` initialized elements starting from the offset `0`.
