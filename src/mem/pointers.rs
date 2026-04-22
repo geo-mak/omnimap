@@ -630,10 +630,10 @@ impl<T> UnmanagedPointer<T> {
         debug_assert!(!range.is_empty(), "Drop range must not be empty");
 
         unsafe {
-            ptr::drop_in_place(ptr::slice_from_raw_parts_mut(
-                self.ptr.add(range.start),
-                range.end - range.start,
-            ))
+            let drop_ptr = self.ptr.add(range.start);
+            let drop_len = range.end - range.start;
+            let drop_slice = ptr::slice_from_raw_parts_mut(drop_ptr, drop_len);
+            drop_slice.drop_in_place();
         };
     }
 
