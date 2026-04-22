@@ -597,7 +597,9 @@ impl<T> UnmanagedPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.ptr, count)) };
+        let drop_slice = ptr::slice_from_raw_parts_mut(self.ptr, count);
+
+        unsafe { drop_slice.drop_in_place() };
     }
 
     /// Calls `drop` on the initialized elements in the specified range.
