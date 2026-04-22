@@ -422,7 +422,7 @@ impl<T> UnmanagedPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::write_bytes(self.ptr, 0, count) };
+        unsafe { self.ptr.write_bytes(0, count) }
     }
 
     /// Stores a value at the specified offset `at`.
