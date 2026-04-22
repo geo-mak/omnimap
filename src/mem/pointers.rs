@@ -294,7 +294,7 @@ impl<T> UnmanagedPointer<T> {
     ///
     /// # Safety
     ///
-    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`..
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
     ///
     /// - The value at the current address must be an initialized value of type T.
     ///   Accessing an uninitialized element as `T` is `undefined behavior`.
