@@ -514,7 +514,7 @@ impl<T> UnmanagedPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::read((self.ptr).add(offset)) }
+        unsafe { self.ptr.add(offset).read() }
     }
 
     /// Shifts `count` number of values after the provided `offset` to the left,
