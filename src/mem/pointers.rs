@@ -567,7 +567,7 @@ impl<T> UnmanagedPointer<T> {
         unsafe {
             let src = (self.ptr).add(src);
             let dst = (self.ptr).add(dst);
-            ptr::copy(src, dst, 1);
+            dst.copy_from(src, 1);
         }
     }
 
