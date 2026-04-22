@@ -535,9 +535,9 @@ impl<T> UnmanagedPointer<T> {
         debug_assert_allocated(self);
 
         unsafe {
-            let dst = (self.ptr).add(offset);
+            let dst = self.ptr.add(offset);
             let src = dst.add(1);
-            ptr::copy(src, dst, count);
+            dst.copy_from(src, count);
         }
     }
 
