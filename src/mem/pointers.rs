@@ -1101,7 +1101,6 @@ mod alloc_ptr_tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)]
     fn test_alloc_ptr_drop_range() {
         let drop_count = Rc::new(RefCell::new(0));
 
@@ -1122,6 +1121,8 @@ mod alloc_ptr_tests {
             alloc_ptr.drop_range(0..3);
 
             assert_eq!(*drop_count.borrow(), 3);
+
+            alloc_ptr.drop_range(3..5);
 
             alloc_ptr.release(layout);
         }
