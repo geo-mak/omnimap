@@ -608,7 +608,7 @@ impl<T> UnmanagedPointer<T> {
 
     /// Calls `drop` on the initialized elements in the specified range.
     ///
-    /// The total drop `count` equals `end - start - 1`.
+    /// The total drop `count` equals `end - start`.
     ///
     /// This method is no-op if `T` is of a trivial type.
     ///
