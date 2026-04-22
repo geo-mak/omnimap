@@ -357,7 +357,9 @@ impl<T> UnmanagedPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { &mut *ptr::slice_from_raw_parts_mut(self.ptr, count) }
+        let slice_ptr = ptr::slice_from_raw_parts_mut(self.ptr, count);
+
+        unsafe { &mut *slice_ptr }
     }
 
     /// Returns the base pointer as a pointer of type `C`.
