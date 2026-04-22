@@ -446,7 +446,7 @@ impl<T> UnmanagedPointer<T> {
         #[cfg(debug_assertions)]
         debug_assert_allocated(self);
 
-        unsafe { ptr::write((self.ptr).add(offset), value) };
+        unsafe { self.ptr.add(offset).write(value) };
     }
 
     /// Returns a reference to an element at the specified `offset`.
