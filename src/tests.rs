@@ -14,7 +14,7 @@ mod map_tests {
         assert!(map.is_empty());
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 0);
     }
 
     #[test]
@@ -23,9 +23,9 @@ mod map_tests {
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.debug_usable_capacity(), 10);
         assert_eq!(map.capacity(), 10);
-        assert_eq!(map.remaining_capacity(), 10);
-        assert_eq!(map.allocated_capacity(), 12);
+        assert_eq!(map.debug_allocated_capacity(), 12);
     }
 
     #[test]
@@ -34,8 +34,8 @@ mod map_tests {
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.debug_usable_capacity(), 14);
         assert_eq!(map.capacity(), 14);
-        assert_eq!(map.remaining_capacity(), 14);
     }
 
     #[test]
@@ -52,8 +52,8 @@ mod map_tests {
         // Map state.
         assert_eq!(map.len(), 3);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 3);
-        assert_eq!(map.remaining_capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 3);
+        assert_eq!(map.capacity(), 0);
 
         // Check values.
         assert_eq!(map.get(&1), Some(&2));
@@ -208,8 +208,8 @@ mod map_tests {
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 1);
-        assert_eq!(map.capacity(), 3);
-        assert_eq!(map.remaining_capacity(), 2);
+        assert_eq!(map.debug_usable_capacity(), 3);
+        assert_eq!(map.capacity(), 2);
 
         // Must return None, because the map is empty.
         assert_eq!(map.shift_remove(&1), None);
@@ -222,8 +222,8 @@ mod map_tests {
         // Now, the map must have expanded its capacity and reset the deleted counter.
         assert_eq!(map.len(), 4);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 3);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 3);
 
         // Remove the second item (key "2").
         assert_eq!(map.shift_remove(&2), Some(3));
@@ -231,14 +231,14 @@ mod map_tests {
         // Map state at this point.
         assert_eq!(map.len(), 3);
         assert_eq!(map.debug_deleted(), 1);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 3);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 3);
 
         let mut deleted = 0;
         let mut occupied = 0;
         let mut empty = 0;
 
-        for i in 0..map.allocated_capacity() {
+        for i in 0..map.debug_allocated_capacity() {
             match map.debug_tag(i) {
                 Tag::Discarded => {
                     deleted += 1;
@@ -282,8 +282,8 @@ mod map_tests {
 
         assert_eq!(map.len(), 4);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 3);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 3);
 
         assert_eq!(map[0], "a");
         assert_eq!(map[1], "b");
@@ -299,8 +299,8 @@ mod map_tests {
 
         assert_eq!(map.len(), 3);
         assert_eq!(map.debug_deleted(), 1);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 3);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 3);
 
         assert_eq!(map[0], "d"); // <- last entry in its place
         assert_eq!(map[1], "b");
@@ -315,8 +315,8 @@ mod map_tests {
 
         assert_eq!(map.len(), 2);
         assert_eq!(map.debug_deleted(), 2);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 3);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 3);
 
         assert_eq!(map[0], "c"); // <- last entry in its place
         assert_eq!(map[1], "b");
@@ -330,8 +330,8 @@ mod map_tests {
 
         assert_eq!(map.len(), 1);
         assert_eq!(map.debug_deleted(), 3);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 3);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 3);
 
         assert_eq!(map[0], "b");
 
@@ -344,8 +344,8 @@ mod map_tests {
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 4);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 3);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 3);
 
         assert_eq!(map.get(&1), None);
         assert_eq!(map.get(&2), None);
@@ -373,8 +373,8 @@ mod map_tests {
 
         assert!(map.debug_tag(0).is_discarded());
 
-        assert_eq!(map.capacity(), 3);
-        assert_eq!(map.remaining_capacity(), 2);
+        assert_eq!(map.debug_usable_capacity(), 3);
+        assert_eq!(map.capacity(), 2);
 
         // Must return None, because the map is empty.
         assert_eq!(map.pop_front(), None);
@@ -388,8 +388,8 @@ mod map_tests {
         // Now, the map must expand its capacity reset the deleted counter.
         assert_eq!(map.len(), 3);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 4);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 4);
 
         // Pop the first item.
         assert_eq!(map.pop_front(), Some((1, 2)));
@@ -397,14 +397,14 @@ mod map_tests {
         // Map state at this point.
         assert_eq!(map.len(), 2);
         assert_eq!(map.debug_deleted(), 1);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 4);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 4);
 
         let mut deleted = 0;
         let mut occupied = 0;
         let mut empty = 0;
 
-        for i in 0..map.allocated_capacity() {
+        for i in 0..map.debug_allocated_capacity() {
             match map.debug_tag(i) {
                 Tag::Discarded => {
                     deleted += 1;
@@ -449,8 +449,8 @@ mod map_tests {
 
         assert!(map.debug_tag(0).is_discarded());
 
-        assert_eq!(map.capacity(), 3);
-        assert_eq!(map.remaining_capacity(), 2);
+        assert_eq!(map.debug_usable_capacity(), 3);
+        assert_eq!(map.capacity(), 2);
 
         // Must return None, because the map is empty.
         assert_eq!(map.pop(), None);
@@ -464,8 +464,8 @@ mod map_tests {
         // Now, the map must expand its capacity reset the deleted counter.
         assert_eq!(map.len(), 3);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 4);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 4);
 
         // Pop the last item.
         assert_eq!(map.pop(), Some((3, 4)));
@@ -473,14 +473,14 @@ mod map_tests {
         // Map state at this point.
         assert_eq!(map.len(), 2);
         assert_eq!(map.debug_deleted(), 1);
-        assert_eq!(map.capacity(), 7);
-        assert_eq!(map.remaining_capacity(), 4);
+        assert_eq!(map.debug_usable_capacity(), 7);
+        assert_eq!(map.capacity(), 4);
 
         let mut deleted = 0;
         let mut occupied = 0;
         let mut empty = 0;
 
-        for i in 0..map.allocated_capacity() {
+        for i in 0..map.debug_allocated_capacity() {
             match map.debug_tag(i) {
                 Tag::Discarded => {
                     deleted += 1;
@@ -515,25 +515,25 @@ mod map_tests {
 
         assert_eq!(map.len(), 3);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 4);
-        assert_eq!(map.remaining_capacity(), 1);
+        assert_eq!(map.debug_usable_capacity(), 4);
+        assert_eq!(map.capacity(), 1);
 
         map.shift_remove(&1);
 
         assert_eq!(map.len(), 2);
         assert_eq!(map.debug_deleted(), 1);
-        assert_eq!(map.capacity(), 4);
-        assert_eq!(map.remaining_capacity(), 1);
+        assert_eq!(map.debug_usable_capacity(), 4);
+        assert_eq!(map.capacity(), 1);
 
         map.clear();
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.debug_usable_capacity(), 4);
         assert_eq!(map.capacity(), 4);
-        assert_eq!(map.remaining_capacity(), 4);
 
         // All slots must be empty in the index.
-        for i in 0..map.allocated_capacity() {
+        for i in 0..map.debug_allocated_capacity() {
             assert!(map.debug_tag(i).is_free())
         }
 
@@ -544,22 +544,22 @@ mod map_tests {
     #[test]
     fn test_map_capacity_reserve() {
         let mut map = OmniMap::new();
-        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 0);
 
         map.reserve(1);
 
+        assert_eq!(map.debug_usable_capacity(), 1);
+        assert_eq!(map.debug_allocated_capacity(), 2);
         assert_eq!(map.capacity(), 1);
-        assert_eq!(map.allocated_capacity(), 2);
-        assert_eq!(map.remaining_capacity(), 1);
 
         map.insert(1, 2);
 
         map.reserve(10);
 
         // Must be (2 + requested capacity + reserve capacity) = 14, with 12 as reported usable.
-        assert_eq!(map.capacity(), 12);
-        assert_eq!(map.allocated_capacity(), 14);
-        assert_eq!(map.remaining_capacity(), 11);
+        assert_eq!(map.debug_usable_capacity(), 12);
+        assert_eq!(map.debug_allocated_capacity(), 14);
+        assert_eq!(map.capacity(), 11);
 
         assert_eq!(map.len(), 1);
 
@@ -577,23 +577,23 @@ mod map_tests {
     #[test]
     fn test_map_capacity_try_reserve() {
         let mut map = OmniMap::new();
-        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 0);
 
         let result = map.try_reserve(1);
 
         assert!(result.is_ok());
+        assert_eq!(map.debug_usable_capacity(), 1);
+        assert_eq!(map.debug_allocated_capacity(), 2);
         assert_eq!(map.capacity(), 1);
-        assert_eq!(map.allocated_capacity(), 2);
-        assert_eq!(map.remaining_capacity(), 1);
 
         map.insert(1, 2);
 
         let result = map.try_reserve(usize::MAX);
 
         assert!(matches!(result.err().unwrap(), MemoryError::LayoutErr));
-        assert_eq!(map.capacity(), 1);
-        assert_eq!(map.allocated_capacity(), 2);
-        assert_eq!(map.remaining_capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 1);
+        assert_eq!(map.debug_allocated_capacity(), 2);
+        assert_eq!(map.capacity(), 0);
 
         assert_eq!(map.get(&1), Some(&2));
         assert_eq!(map.get(&2), None);
@@ -603,21 +603,21 @@ mod map_tests {
     fn test_map_capacity_shrink_to_fit() {
         let mut map = OmniMap::new();
 
-        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 0);
 
         for i in 0..10 {
             map.insert(i, i);
         }
 
-        assert_eq!(map.capacity(), 14);
-        assert_eq!(map.allocated_capacity(), 16);
+        assert_eq!(map.debug_usable_capacity(), 14);
+        assert_eq!(map.debug_allocated_capacity(), 16);
 
         map.shrink_to_fit();
 
         assert_eq!(map.len(), 10);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 10);
-        assert_eq!(map.allocated_capacity(), 12);
+        assert_eq!(map.debug_usable_capacity(), 10);
+        assert_eq!(map.debug_allocated_capacity(), 12);
 
         for i in 0..10 {
             assert_eq!(map.get(&i), Some(&i));
@@ -626,9 +626,9 @@ mod map_tests {
         map.clear();
 
         assert_eq!(map.len(), 0);
+        assert_eq!(map.debug_usable_capacity(), 10);
         assert_eq!(map.capacity(), 10);
-        assert_eq!(map.remaining_capacity(), 10);
-        assert_eq!(map.allocated_capacity(), 12);
+        assert_eq!(map.debug_allocated_capacity(), 12);
 
         // Shrink the capacity while empty.
         // This should cause deallocation of the internal buffers.
@@ -636,15 +636,15 @@ mod map_tests {
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 0);
-        assert_eq!(map.allocated_capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 0);
+        assert_eq!(map.debug_allocated_capacity(), 0);
     }
 
     #[test]
     fn test_map_capacity_shrink_to() {
         let mut map = OmniMap::new();
 
-        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 0);
 
         for i in 0..10 {
             map.insert(i, i);
@@ -652,29 +652,29 @@ mod map_tests {
 
         assert_eq!(map.len(), 10);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 14);
-        assert_eq!(map.allocated_capacity(), 16);
-        assert_eq!(map.remaining_capacity(), 4);
+        assert_eq!(map.debug_usable_capacity(), 14);
+        assert_eq!(map.debug_allocated_capacity(), 16);
+        assert_eq!(map.capacity(), 4);
 
         map.shrink_to(5);
         assert_eq!(map.len(), 10);
-        assert_eq!(map.capacity(), 10);
-        assert_eq!(map.allocated_capacity(), 12);
-        assert_eq!(map.remaining_capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 10);
+        assert_eq!(map.debug_allocated_capacity(), 12);
+        assert_eq!(map.capacity(), 0);
 
         // Shrink and reserve greater than the current capacity (no effect).
         map.shrink_to(20);
         assert_eq!(map.len(), 10);
-        assert_eq!(map.capacity(), 10);
-        assert_eq!(map.allocated_capacity(), 12);
-        assert_eq!(map.remaining_capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 10);
+        assert_eq!(map.debug_allocated_capacity(), 12);
+        assert_eq!(map.capacity(), 0);
 
         // Shrink and reserve less than the current capacity and greater than the current length.
         map.shrink_to(12);
         assert_eq!(map.len(), 10);
-        assert_eq!(map.capacity(), 10);
-        assert_eq!(map.allocated_capacity(), 12);
-        assert_eq!(map.remaining_capacity(), 0);
+        assert_eq!(map.debug_usable_capacity(), 10);
+        assert_eq!(map.debug_allocated_capacity(), 12);
+        assert_eq!(map.capacity(), 0);
 
         // All elements are accessible.
         for i in 0..10 {
@@ -685,9 +685,9 @@ mod map_tests {
         map.clear();
 
         assert_eq!(map.len(), 0);
+        assert_eq!(map.debug_usable_capacity(), 10);
+        assert_eq!(map.debug_allocated_capacity(), 12);
         assert_eq!(map.capacity(), 10);
-        assert_eq!(map.allocated_capacity(), 12);
-        assert_eq!(map.remaining_capacity(), 10);
 
         // Shrink the capacity to 0 while empty.
         // This should cause deallocation of the internal buffers.
@@ -695,9 +695,9 @@ mod map_tests {
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.debug_usable_capacity(), 0);
+        assert_eq!(map.debug_allocated_capacity(), 0);
         assert_eq!(map.capacity(), 0);
-        assert_eq!(map.allocated_capacity(), 0);
-        assert_eq!(map.remaining_capacity(), 0);
     }
 
     #[test]
@@ -903,8 +903,8 @@ mod map_tests {
 
         assert_eq!(cloned.len(), 0);
         assert_eq!(cloned.debug_deleted(), 0);
-        assert_eq!(cloned.capacity(), 0);
-        assert_eq!(map.remaining_capacity(), 0);
+        assert_eq!(cloned.debug_usable_capacity(), 0);
+        assert_eq!(map.capacity(), 0);
     }
 
     #[test]
@@ -918,8 +918,11 @@ mod map_tests {
 
         assert_eq!(cloned.len(), original.len());
         assert_eq!(cloned.debug_deleted(), original.debug_deleted());
+        assert_eq!(
+            cloned.debug_usable_capacity(),
+            original.debug_usable_capacity()
+        );
         assert_eq!(cloned.capacity(), original.capacity());
-        assert_eq!(cloned.remaining_capacity(), original.remaining_capacity());
 
         for (key, value) in original.iter() {
             assert_eq!(cloned.get(key), Some(value));
@@ -940,8 +943,8 @@ mod map_tests {
 
         assert_eq!(cloned.len(), 0);
         assert_eq!(cloned.debug_deleted(), 0);
+        assert_eq!(cloned.debug_usable_capacity(), 0);
         assert_eq!(cloned.capacity(), 0);
-        assert_eq!(cloned.remaining_capacity(), 0);
     }
 
     #[test]
@@ -961,8 +964,8 @@ mod map_tests {
         assert_ne!(cloned.debug_deleted(), original.debug_deleted());
 
         // Clone must have a capacity equal to the length of the original.
-        assert_eq!(cloned.capacity(), original.len());
-        assert_eq!(cloned.remaining_capacity(), 0);
+        assert_eq!(cloned.debug_usable_capacity(), original.len());
+        assert_eq!(cloned.capacity(), 0);
 
         for (key, value) in original.iter() {
             assert_eq!(cloned.get(key), Some(value));
@@ -1045,15 +1048,15 @@ mod map_tests {
         let mut map = OmniMap::with_capacity(100);
 
         // Initial state, all slots must be empty.
-        for i in 0..map.allocated_capacity() {
+        for i in 0..map.debug_allocated_capacity() {
             assert!(map.debug_tag(i).is_free())
         }
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.debug_usable_capacity(), 100);
         assert_eq!(map.capacity(), 100);
-        assert_eq!(map.remaining_capacity(), 100);
-        assert_eq!(map.allocated_capacity(), 115);
+        assert_eq!(map.debug_allocated_capacity(), 115);
 
         // Full capacity.
         for i in 0..100 {
@@ -1061,9 +1064,9 @@ mod map_tests {
         }
 
         // No new allocation.
-        assert_eq!(map.capacity(), 100);
-        assert_eq!(map.remaining_capacity(), 0);
-        assert_eq!(map.allocated_capacity(), 115);
+        assert_eq!(map.debug_usable_capacity(), 100);
+        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_allocated_capacity(), 115);
 
         // Remove some entries.
         for i in 75..100 {
@@ -1075,7 +1078,7 @@ mod map_tests {
         let mut empty_indices = 0;
         let mut deleted_indices = 0;
 
-        let alloc_cap = map.allocated_capacity();
+        let alloc_cap = map.debug_allocated_capacity();
 
         for i in 0..alloc_cap {
             match map.debug_tag(i) {
@@ -1101,22 +1104,22 @@ mod map_tests {
         assert_eq!(deleted_indices, 25);
         assert_eq!(
             empty_indices,
-            map.allocated_capacity() - (occupied_indices.len() + deleted_indices)
+            map.debug_allocated_capacity() - (occupied_indices.len() + deleted_indices)
         );
 
         // Compact the map to reindex.
         map.shrink_to_fit();
 
         // No deleted slots should be present.
-        for i in 0..map.allocated_capacity() {
+        for i in 0..map.debug_allocated_capacity() {
             assert!(!map.debug_tag(i).is_discarded())
         }
 
         assert_eq!(map.len(), 75);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 75);
-        assert_eq!(map.remaining_capacity(), 0);
-        assert_eq!(map.allocated_capacity(), 86);
+        assert_eq!(map.debug_usable_capacity(), 75);
+        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_allocated_capacity(), 86);
 
         // Update entries.
         for i in 0..50 {
@@ -1137,15 +1140,15 @@ mod map_tests {
         }
 
         // No occupied or empty slots should be present.
-        for i in 0..map.allocated_capacity() {
+        for i in 0..map.debug_allocated_capacity() {
             assert!(!map.debug_tag(i).is_used())
         }
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 75);
-        assert_eq!(map.capacity(), 75);
-        assert_eq!(map.remaining_capacity(), 0);
-        assert_eq!(map.allocated_capacity(), 86);
+        assert_eq!(map.debug_usable_capacity(), 75);
+        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_allocated_capacity(), 86);
 
         for i in 0..75 {
             map.insert(i, i);
@@ -1154,12 +1157,12 @@ mod map_tests {
         // Up to 75, the map must reindex and reuse deleted slots without new allocation.
         assert_eq!(map.len(), 75);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 75);
-        assert_eq!(map.remaining_capacity(), 0);
-        assert_eq!(map.allocated_capacity(), 86);
+        assert_eq!(map.debug_usable_capacity(), 75);
+        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_allocated_capacity(), 86);
 
         // The map must be able to reindex successfully, no deleted slots should be present.
-        for i in 0..map.allocated_capacity() {
+        for i in 0..map.debug_allocated_capacity() {
             assert!(!map.debug_tag(i).is_discarded())
         }
 
@@ -1170,9 +1173,9 @@ mod map_tests {
         // From 75, the map must reallocate.
         assert_eq!(map.len(), 100);
         assert_eq!(map.debug_deleted(), 0);
-        assert_eq!(map.capacity(), 112);
-        assert_eq!(map.remaining_capacity(), 12);
-        assert_eq!(map.allocated_capacity(), 128);
+        assert_eq!(map.debug_usable_capacity(), 112);
+        assert_eq!(map.capacity(), 12);
+        assert_eq!(map.debug_allocated_capacity(), 128);
 
         // Read updated keys.
         for i in 0..100 {
@@ -1189,8 +1192,8 @@ mod map_tests {
 
         // Len and cap must remain invariant after the second insert.
         assert_eq!(map.len(), 1);
-        assert_eq!(map.capacity(), 3);
-        assert_eq!(map.remaining_capacity(), 2);
+        assert_eq!(map.debug_usable_capacity(), 3);
+        assert_eq!(map.capacity(), 2);
 
         // Access the keys returns the last updated value.
         assert_eq!(map.get(&()), Some(&2));
@@ -1199,12 +1202,12 @@ mod map_tests {
 
         assert_eq!(map.len(), 0);
         assert_eq!(map.get(&()), None);
-        assert_eq!(map.capacity(), 3);
-        assert_eq!(map.remaining_capacity(), 2);
+        assert_eq!(map.debug_usable_capacity(), 3);
+        assert_eq!(map.capacity(), 2);
 
         map.shrink_to_fit();
 
+        assert_eq!(map.debug_usable_capacity(), 0);
         assert_eq!(map.capacity(), 0);
-        assert_eq!(map.remaining_capacity(), 0);
     }
 }

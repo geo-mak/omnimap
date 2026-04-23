@@ -17,7 +17,7 @@
 /// };
 ///
 /// assert_eq!(dict.len(), 3);
-/// assert_eq!(dict.capacity(), 3);
+/// assert_eq!(dict.capacity(), 0);
 ///
 /// assert_eq!(dict.get(&"one"), Some(&1));
 /// assert_eq!(dict.get(&"two"), Some(&2));
@@ -42,7 +42,7 @@
 /// };
 ///
 /// assert_eq!(dict.len(), 3);
-/// assert_eq!(dict.capacity(), 10);
+/// assert_eq!(dict.capacity(), 7);
 ///
 /// assert_eq!(dict.get(&"one"), Some(&1));
 /// assert_eq!(dict.get(&"two"), Some(&2));
@@ -97,7 +97,7 @@ mod builder_tests {
         };
 
         assert_eq!(dict.len(), 3);
-        assert_eq!(dict.capacity(), 3);
+        assert_eq!(dict.debug_usable_capacity(), 3);
 
         assert_eq!(dict.get(&"one"), Some(&1));
         assert_eq!(dict.get(&"two"), Some(&2));
@@ -114,7 +114,7 @@ mod builder_tests {
         };
 
         assert_eq!(dict.len(), 3);
-        assert_eq!(dict.capacity(), 10);
+        assert_eq!(dict.debug_usable_capacity(), 10);
 
         assert_eq!(dict.get(&"one"), Some(&1));
         assert_eq!(dict.get(&"two"), Some(&2));

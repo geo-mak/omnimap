@@ -720,9 +720,7 @@ impl<K, V> OmniMap<K, V> {
         }
     }
 
-    /// Returns the allocated _usable_ capacity of the `OmniMap`.
-    ///
-    /// The actual allocated capacity is higher to maintain the load factor.
+    /// Returns the remaining usable capacity of the map.
     ///
     /// # Examples
     ///
@@ -740,18 +738,6 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     #[inline(always)]
     pub const fn capacity(&self) -> usize {
-        self.core.usable_capacity()
-    }
-
-    /// Returns the the total allocated capacity including the _unusable_ capacity.
-    #[inline(always)]
-    pub const fn allocated_capacity(&self) -> usize {
-        self.core.cap
-    }
-
-    /// Returns the remaining usable capacity.
-    #[inline(always)]
-    pub const fn remaining_capacity(&self) -> usize {
         self.core.free
     }
 
@@ -820,14 +806,15 @@ impl<K, V> OmniMap<K, V> {
     ///
     /// let mut map = OmniMap::new();
     ///
-    /// // The allocated capacity with first insert is 4.
+    /// // The allocated capacity with first insert is 3.
     /// map.insert(1, "a");
+    /// assert_eq!(map.capacity(), 2);
     ///
     /// // Reserve space for 10 more elements
     /// map.reserve(10);
     ///
-    /// // The capacity is now 14
-    /// assert_eq!(map.capacity(), 14);
+    /// // The capacity is now 13.
+    /// assert_eq!(map.capacity(), 13);
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
@@ -859,7 +846,7 @@ impl<K, V> OmniMap<K, V> {
     ///
     /// let mut map = OmniMap::new();
     ///
-    /// // The allocated capacity with first insert is 4.
+    /// // The initial capacity with first insert is 3.
     /// map.insert(1, "a");
     ///
     /// // Try reserve space for very large number of elements.
@@ -868,16 +855,16 @@ impl<K, V> OmniMap<K, V> {
     /// // Result must be error.
     /// assert!(matches!(result.err().unwrap(), MemoryError::LayoutErr));
     ///
-    /// // The capacity remains 3
-    /// assert_eq!(map.capacity(), 3);
+    /// // The free capacity remains 2.
+    /// assert_eq!(map.capacity(), 2);
     ///
     /// // Reserve space for 10 more elements
     /// result = map.try_reserve(10);
     ///
     /// assert!(result.is_ok());
     ///
-    /// // The capacity is now 14
-    /// assert_eq!(map.capacity(), 14);
+    /// // The capacity is now 13.
+    /// assert_eq!(map.capacity(), 13);
     /// ```
     #[inline]
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), MemoryError> {
@@ -973,20 +960,22 @@ impl<K, V> OmniMap<K, V> {
     ///
     /// assert_eq!(map.capacity(), 10);
     ///
-    /// // Insert some elements
+    /// // Insert 2 elements.
     /// map.insert(1, "a");
     /// map.insert(2, "b");
     ///
-    /// // Shrink the capacity to 3
+    /// assert_eq!(map.capacity(), 8);
+    ///
+    /// // Shrink the capacity to 5.
     /// map.shrink_to(5);
     ///
-    /// assert_eq!(map.capacity(), 5);
+    /// assert_eq!(map.capacity(), 3);
     /// ```
     pub fn shrink_to(&mut self, capacity: usize) {
         let current_len = self.core.len;
         let max_cap = max(current_len, capacity);
         // AKA self is allocated and layout can be unchecked.
-        if max_cap < self.capacity() {
+        if max_cap < self.core.usable_capacity() {
             if max_cap == 0 {
                 unsafe {
                     self.core.release();
@@ -1028,15 +1017,15 @@ impl<K, V> OmniMap<K, V> {
     ///  map.insert(1, "a");
     ///  map.insert(2, "b");
     ///
-    /// // Shrink the capacity to fit the current length
+    /// // Shrink the capacity to fit the current length.
     /// map.shrink_to_fit();
     ///
-    /// assert_eq!(map.capacity(), 2);
+    /// assert_eq!(map.capacity(), 0);
     /// ```
     #[inline]
     pub fn shrink_to_fit(&mut self) {
         let current_len = self.core.len;
-        if current_len < self.capacity() {
+        if current_len < self.core.usable_capacity() {
             if current_len == 0 {
                 unsafe {
                     self.core.release();
@@ -1348,7 +1337,7 @@ where
     /// let compact_clone = map.clone_compact();
     ///
     /// assert_eq!(compact_clone.len(), map.len());
-    /// assert_eq!(compact_clone.capacity(), map.len());
+    /// assert_eq!(compact_clone.capacity(), 0);
     ///
     /// assert_eq!(compact_clone.get(&1), Some(&"a"));
     /// assert_eq!(compact_clone.get(&2), Some(&"b"));
@@ -2000,6 +1989,18 @@ where
 /// Development and testing methods that are not available in release builds.
 #[cfg(test)]
 impl<K, V> OmniMap<K, V> {
+    /// Returns the the total allocated capacity including the _unusable_ capacity.
+    #[inline(always)]
+    pub(crate) const fn debug_allocated_capacity(&self) -> usize {
+        self.core.cap
+    }
+
+    /// Returns the total usable capacity of the map.
+    #[inline(always)]
+    pub(crate) const fn debug_usable_capacity(&self) -> usize {
+        self.core.usable_capacity()
+    }
+
     /// Returns the tag's value of the slot at the specified `offset`.
     ///
     /// This method is used for testing purposes only and not available in release builds.
