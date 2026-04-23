@@ -202,9 +202,12 @@ impl<K, V> CoreMap<K, V> {
         on_err: OnError,
     ) -> Result<(), MemoryError> {
         debug_assert!(self.len == 0);
-        let mut new_data = Self::new_acquire_init(new_cap, on_err)?;
-        mem::swap(self, &mut new_data);
-        unsafe { new_data.release() }
+        let mut core = Self::new_acquire_init(new_cap, on_err)?;
+
+        mem::swap(self, &mut core);
+
+        unsafe { core.release() }
+
         Ok(())
     }
 
@@ -221,27 +224,27 @@ impl<K, V> CoreMap<K, V> {
         new_cap: usize,
         on_err: OnError,
     ) -> Result<(), MemoryError> {
-        let mut new_data = Self::new_acquire_init(new_cap, on_err)?;
+        let mut core = Self::new_acquire_init(new_cap, on_err)?;
 
         let current_len = self.len;
 
         unsafe {
             core::ptr::copy_nonoverlapping(
                 self.entries.as_ptr(),
-                new_data.entries.as_ptr_mut(),
+                core.entries.as_ptr_mut(),
                 current_len,
             )
         };
 
-        new_data.len = current_len;
-        new_data.free -= current_len;
+        core.len = current_len;
+        core.free -= current_len;
 
         // Hash value is pre-computed, so there is no risk of panic.
-        new_data.build_index();
+        core.build_index();
 
-        mem::swap(self, &mut new_data);
+        mem::swap(self, &mut core);
 
-        unsafe { new_data.release() }
+        unsafe { core.release() }
 
         Ok(())
     }
@@ -265,7 +268,7 @@ impl<K, V> CoreMap<K, V> {
                 }
             } else {
                 match CoreMap::new_acquire_init(Self::INIT_TOTAL_CAP, OnError::Panic) {
-                    Ok(mut data) => mem::swap(self, &mut data),
+                    Ok(mut core) => mem::swap(self, &mut core),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
             }
@@ -289,8 +292,8 @@ impl<K, V> CoreMap<K, V> {
                 }
             } else {
                 match Self::new_acquire_init(extra_cap, on_err) {
-                    Ok(mut data) => {
-                        mem::swap(self, &mut data);
+                    Ok(mut core) => {
+                        mem::swap(self, &mut core);
                         Ok(())
                     }
                     Err(e) => Err(e),
