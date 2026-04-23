@@ -1,14 +1,13 @@
 ## OmniMap
-[![CI](https://github.com/geo-mak/omni_map/actions/workflows/ci.yml/badge.svg)](https://github.com/geo-mak/omni_map/actions/workflows/ci.yml)
 
 An indexed key-value in-memory data store with characteristics of both hashmaps and vectors.
 
-## **Notes**:
-Originally designed as a lightweight, indexed key-value store for high-performance parsers and compilers.
+Originally designed as a lightweight, indexed key-value store for high-performance snappy parsers and compilers.
 
-The public API is not stable and may change in the future.
+## **⚠️ Notes**:
+- The public API is unstable and gets changed frequently.
 
-No release has been made yet and it is **not** recommended for production use.
+- No release has been made yet and it is **not** recommended for production use.
 
 ## Implementation highlights
 - Relatively simple and lightweight implementation.
