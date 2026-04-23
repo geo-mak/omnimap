@@ -334,7 +334,7 @@ impl<T> UnmanagedPointer<T> {
         debug_assert_not_null(self);
 
         let slice_ptr = ptr::slice_from_raw_parts(self.ptr, count);
-        
+
         unsafe { &*slice_ptr }
     }
 

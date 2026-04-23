@@ -115,7 +115,7 @@ pub type ValuesIteratorMut<'a, K, V> =
 
 /// Stores the fields of the map and allocates/deallocates its pointers.
 /// It does't implement `Drop`. Deallocation is manual.
-struct MapCore<K, V> {
+struct CoreMap<K, V> {
     entries: UnmanagedPointer<Entry<K, V>>,
     index: MapIndex,
     cap: usize,
@@ -123,7 +123,7 @@ struct MapCore<K, V> {
     free: usize,
 }
 
-impl<K, V> MapCore<K, V> {
+impl<K, V> CoreMap<K, V> {
     /// The initial allocation capacity of the map.
     const INIT_TOTAL_CAP: usize = 4;
 
@@ -147,7 +147,7 @@ impl<K, V> MapCore<K, V> {
     ///
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
-    fn new_acquire_uninit(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
+    fn new_acquire_uninit(cap: usize, on_err: OnError) -> Result<CoreMap<K, V>, MemoryError> {
         unsafe {
             let mut entries = UnmanagedPointer::new();
 
@@ -161,7 +161,7 @@ impl<K, V> MapCore<K, V> {
 
             error_guard.set_off();
 
-            let instance = MapCore {
+            let instance = CoreMap {
                 index,
                 entries,
                 cap,
@@ -182,7 +182,7 @@ impl<K, V> MapCore<K, V> {
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
     #[inline(always)]
-    fn new_acquire_init(cap: usize, on_err: OnError) -> Result<MapCore<K, V>, MemoryError> {
+    fn new_acquire_init(cap: usize, on_err: OnError) -> Result<CoreMap<K, V>, MemoryError> {
         let mut instance = Self::new_acquire_uninit(cap, on_err)?;
         unsafe { instance.index.reset_tags(cap) };
         Ok(instance)
@@ -264,7 +264,7 @@ impl<K, V> MapCore<K, V> {
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
             } else {
-                match MapCore::new_acquire_init(Self::INIT_TOTAL_CAP, OnError::Panic) {
+                match CoreMap::new_acquire_init(Self::INIT_TOTAL_CAP, OnError::Panic) {
                     Ok(mut data) => mem::swap(self, &mut data),
                     Err(_) => unsafe { unreachable_unchecked() },
                 }
@@ -617,7 +617,7 @@ impl<K, V> MapCore<K, V> {
 /// It offers intuitive and ergonomic APIs inspired by hash maps and vectors, with the added
 /// benefit of predictable iteration order and stable indices.
 pub struct OmniMap<K, V> {
-    core: MapCore<K, V>,
+    core: CoreMap<K, V>,
 }
 
 impl<K, V> Drop for OmniMap<K, V> {
@@ -653,7 +653,7 @@ impl<K, V> Default for OmniMap<K, V> {
     /// ```
     #[inline]
     fn default() -> Self {
-        match MapCore::new_acquire_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
+        match CoreMap::new_acquire_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
             Ok(data) => Self { core: data },
             Err(_) => unsafe { unreachable_unchecked() },
         }
@@ -679,7 +679,7 @@ impl<K, V> OmniMap<K, V> {
     #[inline]
     pub const fn new() -> Self {
         OmniMap {
-            core: MapCore::new(),
+            core: CoreMap::new(),
         }
     }
 
@@ -706,12 +706,12 @@ impl<K, V> OmniMap<K, V> {
             return Self::new();
         }
 
-        let cap = match MapCore::<K, V>::allocation_capacity(capacity, OnError::Panic) {
+        let cap = match CoreMap::<K, V>::allocation_capacity(capacity, OnError::Panic) {
             Ok(cap) => cap,
             Err(_) => unsafe { unreachable_unchecked() },
         };
 
-        match MapCore::new_acquire_init(cap, OnError::Panic) {
+        match CoreMap::new_acquire_init(cap, OnError::Panic) {
             Ok(core) => OmniMap { core },
             Err(_) => unsafe { unreachable_unchecked() },
         }
@@ -992,7 +992,7 @@ impl<K, V> OmniMap<K, V> {
                 };
                 return;
             }
-            let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(max_cap);
+            let new_cap = CoreMap::<K, V>::allocation_capacity_unchecked(max_cap);
             let result = if current_len == 0 {
                 unsafe { self.core.adjust_unused_layout(new_cap, OnError::Panic) }
             } else {
@@ -1042,7 +1042,7 @@ impl<K, V> OmniMap<K, V> {
                 };
                 return;
             }
-            let new_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
+            let new_cap = CoreMap::<K, V>::allocation_capacity_unchecked(current_len);
             match unsafe { self.core.adjust_used_layout(new_cap, OnError::Panic) } {
                 Ok(_) => (),
                 Err(_) => unsafe { unreachable_unchecked() },
@@ -1262,7 +1262,7 @@ where
         let current_cap = self.core.cap;
         let current_len = self.core.len;
 
-        let core = match MapCore::new_acquire_init(current_cap, OnError::Panic) {
+        let core = match CoreMap::new_acquire_init(current_cap, OnError::Panic) {
             Ok(instance) => instance,
             Err(_) => unsafe { unreachable_unchecked() },
         };
@@ -1294,9 +1294,9 @@ where
     fn make_compact_clone(&self) -> Self {
         let current_len = self.core.len;
 
-        let compact_cap = MapCore::<K, V>::allocation_capacity_unchecked(current_len);
+        let compact_cap = CoreMap::<K, V>::allocation_capacity_unchecked(current_len);
 
-        let core = match MapCore::new_acquire_init(compact_cap, OnError::Panic) {
+        let core = match CoreMap::new_acquire_init(compact_cap, OnError::Panic) {
             Ok(instance) => instance,
             Err(_) => unsafe { unreachable_unchecked() },
         };
@@ -1435,7 +1435,7 @@ where
             self.core.reclaim_or_acquire();
         }
 
-        let hash = MapCore::<K, V>::make_hash(&key);
+        let hash = CoreMap::<K, V>::make_hash(&key);
 
         let result = self.core.find(hash, &key);
 
@@ -1502,7 +1502,7 @@ where
             return None;
         }
 
-        let hash = MapCore::<K, V>::make_hash(&key);
+        let hash = CoreMap::<K, V>::make_hash(&key);
 
         let result = self.core.find(hash, key);
 
@@ -1555,7 +1555,7 @@ where
             return None;
         }
 
-        let hash = MapCore::<K, V>::make_hash(&key);
+        let hash = CoreMap::<K, V>::make_hash(&key);
 
         let result = self.core.find(hash, key);
 
