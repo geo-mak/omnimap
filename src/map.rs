@@ -600,7 +600,7 @@ impl<K, V> CoreMap<K, V> {
         unsafe { self.entries.as_slice(self.len).iter() }
     }
 
-    /// Returns a mutable iterator over the entries in the `OmniMap`.
+    /// Returns a mutable iterator over the entries in the map.
     ///
     /// This method makes it safe to iterate over the entries without worrying about the state of
     /// the pointer and to trick the compiler to return empty iterator without type inference
@@ -638,7 +638,7 @@ impl<K, V> Drop for OmniMap<K, V> {
 }
 
 impl<K, V> Default for OmniMap<K, V> {
-    /// Creates a new `OmniMap` with the default capacity.
+    /// Creates a new instance with the default capacity.
     /// The default capacity is set to `16`, with 14 as useable capacity.
     ///
     /// # Panics
@@ -666,7 +666,7 @@ impl<K, V> Default for OmniMap<K, V> {
 impl<K, V> OmniMap<K, V> {
     const DEFAULT_CAPACITY: usize = 16;
 
-    /// Returns a new `OmniMap` without allocated capacity.
+    /// Returns a new instance without allocated capacity.
     ///
     /// # Examples
     ///
@@ -686,7 +686,7 @@ impl<K, V> OmniMap<K, V> {
         }
     }
 
-    /// Creates a new `OmniMap` with the specified `capacity`.
+    /// Creates a new instance with the specified `capacity`.
     ///
     /// # Panics
     ///
@@ -741,7 +741,7 @@ impl<K, V> OmniMap<K, V> {
         self.core.free
     }
 
-    /// Returns the number of entries in the `OmniMap`.
+    /// Returns the number of entries in the map.
     ///
     /// # Examples
     ///
@@ -762,7 +762,7 @@ impl<K, V> OmniMap<K, V> {
         self.core.len
     }
 
-    /// Checks if the `OmniMap` is empty.
+    /// Checks if the map is empty.
     ///
     /// # Examples
     ///
@@ -943,7 +943,7 @@ impl<K, V> OmniMap<K, V> {
         Some((&entry.key, &entry.value))
     }
 
-    /// Shrinks the capacity of the `OmniMap` to the specified capacity.
+    /// Shrinks the capacity of the map to the specified capacity.
     /// In order to take effect, `capacity` must be less than the current capacity
     /// and greater than or equal to the number of elements in the map.
     ///
@@ -997,7 +997,7 @@ impl<K, V> OmniMap<K, V> {
         }
     }
 
-    /// Shrinks the capacity of the `OmniMap` to fit its current length.
+    /// Shrinks the capacity of the map to fit its current length.
     /// If the capacity is equal to the number of elements in the map, this method will do nothing.
     ///
     /// # Time Complexity
@@ -1081,7 +1081,7 @@ impl<K, V> OmniMap<K, V> {
         }
     }
 
-    /// Returns an iterator over the entries in the `OmniMap`.
+    /// Returns an iterator over the entries in the map.
     ///
     /// # Examples
     ///
@@ -1102,7 +1102,7 @@ impl<K, V> OmniMap<K, V> {
             .map(|entry| (&entry.key, &entry.value))
     }
 
-    /// Returns a mutable iterator over the entries in the `OmniMap`.
+    /// Returns a mutable iterator over the entries in the map.
     ///
     /// # Examples
     ///
@@ -1128,7 +1128,7 @@ impl<K, V> OmniMap<K, V> {
             .map(|entry| (&entry.key, &mut entry.value))
     }
 
-    /// Returns an iterator over the keys in the `OmniMap`.
+    /// Returns an iterator over the keys in the map.
     ///
     /// # Examples
     ///
@@ -1147,7 +1147,7 @@ impl<K, V> OmniMap<K, V> {
         self.core.iter_entries().map(|entry| &entry.key)
     }
 
-    /// Returns an iterator over the values in the `OmniMap`.
+    /// Returns an iterator over the values in the map.
     ///
     /// # Examples
     ///
@@ -1317,7 +1317,7 @@ where
 
     /// Returns a compact clone of the current instance.
     ///
-    /// This method creates a clone of the `OmniMap` where the capacity of the internal
+    /// This method creates a clone of the map where the capacity of the internal
     /// storage is reduced to fit the current number of elements. This can help reduce
     /// memory usage if the map has a lot of unused capacity.
     ///
@@ -1918,7 +1918,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
     type Item = (K, V);
     type IntoIter = OmniMapIterator<K, V>;
 
-    /// Consumes the `OmniMap` and returns an iterator over its entries.
+    /// Consumes the instance and returns an iterator over its entries.
     ///
     /// # Examples
     ///
