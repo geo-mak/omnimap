@@ -455,16 +455,21 @@ impl<K, V> OmniMap<K, V> {
     #[inline]
     pub fn shrink_to_fit(&mut self) {
         let current_len = self.core.len;
+
         if current_len < self.core.usable_capacity() {
+            // Safety: The core has an allocated memory
             if current_len == 0 {
                 unsafe {
                     self.core.release();
                     self.core.cap = 0;
                     self.core.free = 0;
                 };
+
                 return;
             }
+
             let new_cap = CoreMap::<K, V>::allocation_capacity_unchecked(current_len);
+
             match unsafe { self.core.adjust_used_layout(new_cap, OnError::Panic) } {
                 Ok(_) => (),
                 Err(_) => unsafe { unreachable_unchecked() },
