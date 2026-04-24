@@ -34,10 +34,29 @@ pub struct Entry<K, V> {
     pub(crate) hash: usize,
 }
 
+// Private.
 impl<K, V> Entry<K, V> {
     #[inline(always)]
     pub(crate) const fn new(key: K, value: V, hash: usize) -> Self {
         Self { key, value, hash }
+    }
+}
+
+// Public.
+impl<K, V> Entry<K, V> {
+    #[inline(always)]
+    pub const fn key(&self) -> &K {
+        &self.key
+    }
+
+    #[inline(always)]
+    pub const fn value(&self) -> &V {
+        &self.value
+    }
+
+    #[inline(always)]
+    pub const fn value_mut(&mut self) -> &mut V {
+        &mut self.value
     }
 }
 
