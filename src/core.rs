@@ -239,21 +239,29 @@ impl<K, V> CoreMap<K, V> {
     /// This function shall be called only if the map is considered full.
     pub(crate) fn reclaim_or_acquire(&mut self) {
         if self.len < self.cap >> 1 {
-            // Reclaiming deleted slots without reallocation.
+            // Reclaiming deleted slots only.
             self.reindex();
-        } else {
+
+            return;
+        };
+
+        if likely(self.cap != 0) {
             // Reallocation.
-            if likely(self.cap != 0) {
-                let new_cap = self.capacity_next_power_of_two();
-                match unsafe { self.adjust_used_layout(new_cap, OnError::Panic) } {
-                    Ok(_) => (),
-                    Err(_) => unsafe { unreachable_unchecked() },
+            match Self::allocation_capacity(self.cap, OnError::Panic) {
+                Ok(new_cap) => {
+                    let next_cap = new_cap.next_power_of_two();
+                    match unsafe { self.adjust_used_layout(next_cap, OnError::Panic) } {
+                        Ok(_) => (),
+                        Err(_) => unsafe { unreachable_unchecked() },
+                    }
                 }
-            } else {
-                match CoreMap::new_acquire_init(Self::INIT_TOTAL_CAP, OnError::Panic) {
-                    Ok(mut core) => mem::swap(self, &mut core),
-                    Err(_) => unsafe { unreachable_unchecked() },
-                }
+                Err(_) => unsafe { unreachable_unchecked() },
+            }
+        } else {
+            // New allocation.
+            match CoreMap::new_acquire_init(Self::INIT_TOTAL_CAP, OnError::Panic) {
+                Ok(mut core) => mem::swap(self, &mut core),
+                Err(_) => unsafe { unreachable_unchecked() },
             }
         }
     }
@@ -343,17 +351,6 @@ impl<K, V> CoreMap<K, V> {
             return Ok(mul_eight / 7);
         }
         Err(on_err.layout_err())
-    }
-
-    /// Returns the next power of two of the current capacity.
-    ///
-    /// This method panics when overflow occurs.
-    #[inline(always)]
-    const fn capacity_next_power_of_two(&self) -> usize {
-        match Self::allocation_capacity(self.cap, OnError::Panic) {
-            Ok(alloc_cap) => alloc_cap.next_power_of_two(),
-            Err(_) => unsafe { unreachable_unchecked() },
-        }
     }
 
     /// Calculates the hash value for a key.
