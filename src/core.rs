@@ -312,7 +312,7 @@ impl<K, V> CoreMap<K, V> {
 
     #[inline(always)]
     const fn usable_capacity_of(cap: usize) -> usize {
-        (cap >> 3) * 7 + ((cap & 7) * 7 >> 3)
+        ((cap >> 3) * 7) + (((cap & 7) * 7) >> 3)
     }
 
     #[inline(always)]
