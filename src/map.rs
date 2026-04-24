@@ -412,7 +412,7 @@ impl<K, V> OmniMap<K, V> {
             }
 
             // Safety: The shrinking capacity is less than the usable capacity.
-            let new_cap = CoreMap::<K, V>::allocation_capacity_unchecked(shrinking_cap);
+            let new_cap = unsafe { CoreMap::<K, V>::allocation_capacity_unchecked(shrinking_cap) };
 
             let result = if current_len == 0 {
                 unsafe { self.core.adjust_unused_layout(new_cap, OnError::Panic) }
@@ -468,7 +468,7 @@ impl<K, V> OmniMap<K, V> {
                 return;
             }
 
-            let new_cap = CoreMap::<K, V>::allocation_capacity_unchecked(current_len);
+            let new_cap = unsafe { CoreMap::<K, V>::allocation_capacity_unchecked(current_len) };
 
             match unsafe { self.core.adjust_used_layout(new_cap, OnError::Panic) } {
                 Ok(_) => (),
@@ -721,7 +721,7 @@ where
     fn make_compact_clone(&self) -> Self {
         let current_len = self.core.len;
 
-        let compact_cap = CoreMap::<K, V>::allocation_capacity_unchecked(current_len);
+        let compact_cap = unsafe { CoreMap::<K, V>::allocation_capacity_unchecked(current_len) };
 
         let core = match CoreMap::new_acquire_init(compact_cap, OnError::Panic) {
             Ok(instance) => instance,

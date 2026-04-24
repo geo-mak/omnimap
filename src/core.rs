@@ -322,10 +322,10 @@ impl<K, V> CoreMap<K, V> {
 
     /// Returns the value that maintains the load factor for a given capacity `given`.
     ///
-    /// This method doesn't check for arithmetic overflow.
+    /// **Safety**: This method doesn't check for arithmetic overflow.
     #[must_use]
     #[inline(always)]
-    pub(crate) const fn allocation_capacity_unchecked(given: usize) -> usize {
+    pub(crate) const unsafe fn allocation_capacity_unchecked(given: usize) -> usize {
         ((given + 1) * 8) / 7
     }
 
