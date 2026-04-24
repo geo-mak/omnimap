@@ -394,23 +394,32 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     pub fn shrink_to(&mut self, capacity: usize) {
         let current_len = self.core.len;
-        let max_cap = max(current_len, capacity);
-        // AKA self is allocated and layout can be unchecked.
-        if max_cap < self.core.usable_capacity() {
-            if max_cap == 0 {
+
+        let shrinking_cap = max(current_len, capacity);
+
+        if shrinking_cap < self.core.usable_capacity() {
+            // Safety: The core has an allocated memory.
+
+            if shrinking_cap == 0 {
+                // Safety: The shrinking capacity = len = 0.
                 unsafe {
                     self.core.release();
                     self.core.cap = 0;
                     self.core.free = 0;
                 };
+
                 return;
             }
-            let new_cap = CoreMap::<K, V>::allocation_capacity_unchecked(max_cap);
+
+            // Safety: The shrinking capacity is less than the usable capacity.
+            let new_cap = CoreMap::<K, V>::allocation_capacity_unchecked(shrinking_cap);
+
             let result = if current_len == 0 {
                 unsafe { self.core.adjust_unused_layout(new_cap, OnError::Panic) }
             } else {
                 unsafe { self.core.adjust_used_layout(new_cap, OnError::Panic) }
             };
+
             match result {
                 Ok(_) => (),
                 Err(_) => unsafe { unreachable_unchecked() },
