@@ -7,6 +7,7 @@ repository = "https://github.com/geo-mak/omnimap"
 
 [dev-dependencies]
 criterion = "0.8.1"
+rand = { version = "0.10.1"}
 
 [[bench]]
 name = "benchmarks"
