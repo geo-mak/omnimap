@@ -376,7 +376,7 @@ impl<K, V> CoreMap<K, V> {
     ///
     /// > Note: The hash method of the `key` may panic.
     #[inline]
-    pub(crate) fn make_hash<B>(key: &B) -> usize
+    pub(crate) fn hash<B>(key: &B) -> usize
     where
         B: ?Sized + Hash,
     {
@@ -550,7 +550,7 @@ impl<K, V> CoreMap<K, V> {
         K: Eq + Borrow<B>,
         B: ?Sized + Hash + Eq,
     {
-        let hash = Self::make_hash(key);
+        let hash = Self::hash(key);
 
         let result = self.find(hash, key);
 

@@ -862,7 +862,7 @@ where
             self.core.reclaim_or_acquire();
         }
 
-        let hash = CoreMap::<K, V>::make_hash(&key);
+        let hash = CoreMap::<K, V>::hash(&key);
 
         let result = self.core.find(hash, &key);
 
@@ -929,7 +929,7 @@ where
             return None;
         }
 
-        let hash = CoreMap::<K, V>::make_hash(&key);
+        let hash = CoreMap::<K, V>::hash(&key);
 
         let result = self.core.find(hash, key);
 
@@ -982,7 +982,7 @@ where
             return None;
         }
 
-        let hash = CoreMap::<K, V>::make_hash(&key);
+        let hash = CoreMap::<K, V>::hash(&key);
 
         let result = self.core.find(hash, key);
 
