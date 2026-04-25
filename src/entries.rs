@@ -120,6 +120,46 @@ impl<K, V> Entries<K, V> {
         unsafe { self.pointer.release_memory(layout) }
     }
 
+    /// Calls `drop` on the initialized elements with the specified `count` starting from the
+    /// offset `0`.
+    ///
+    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
+    /// the drop range `[0, count - 1]`.
+    ///
+    /// This method is no-op when `count` is `0` or when `T` is of trivial type.
+    ///
+    /// # Safety
+    ///
+    /// - Pointer must point to an already allocated memory-segment.
+    ///
+    /// - `count` must be within the bounds of the **initialized** elements.
+    ///   Calling `drop` on uninitialized elements is `undefined behavior`.
+    ///
+    /// - Using dropped values after calling this method is `undefined behavior`.
+    #[inline(always)]
+    pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
+        unsafe { self.pointer.drop_initialized(count) }
+    }
+
+    /// Calls `drop` on the initialized elements in the specified range.
+    ///
+    /// The total drop `count` equals `end - start`.
+    ///
+    /// # Safety
+    ///
+    /// - Pointer must point to an already allocated memory-segment.
+    ///
+    /// - `range` must not be empty.
+    ///
+    /// - `range` must be within the bounds of the **initialized** elements.
+    ///   Calling `drop` on uninitialized elements is `undefined behavior`.
+    ///
+    /// - Using dropped values after calling this method is `undefined behavior`.
+    #[inline(always)]
+    pub(crate) unsafe fn drop_range(&mut self, range: Range<usize>) {
+        unsafe { self.pointer.drop_range(range) }
+    }
+
     /// Checks if the pointer is `null`.
     #[must_use]
     #[inline(always)]
@@ -293,46 +333,6 @@ impl<K, V> Entries<K, V> {
     #[inline(always)]
     pub const unsafe fn memmove_one(&mut self, src: usize, dst: usize) {
         unsafe { self.pointer.memmove_one(src, dst) }
-    }
-
-    /// Calls `drop` on the initialized elements with the specified `count` starting from the
-    /// offset `0`.
-    ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the drop range `[0, count - 1]`.
-    ///
-    /// This method is no-op when `count` is `0` or when `T` is of trivial type.
-    ///
-    /// # Safety
-    ///
-    /// - Pointer must point to an already allocated memory-segment.
-    ///
-    /// - `count` must be within the bounds of the **initialized** elements.
-    ///   Calling `drop` on uninitialized elements is `undefined behavior`.
-    ///
-    /// - Using dropped values after calling this method is `undefined behavior`.
-    #[inline(always)]
-    pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
-        unsafe { self.pointer.drop_initialized(count) }
-    }
-
-    /// Calls `drop` on the initialized elements in the specified range.
-    ///
-    /// The total drop `count` equals `end - start`.
-    ///
-    /// # Safety
-    ///
-    /// - Pointer must point to an already allocated memory-segment.
-    ///
-    /// - `range` must not be empty.
-    ///
-    /// - `range` must be within the bounds of the **initialized** elements.
-    ///   Calling `drop` on uninitialized elements is `undefined behavior`.
-    ///
-    /// - Using dropped values after calling this method is `undefined behavior`.
-    #[inline(always)]
-    pub(crate) unsafe fn drop_range(&mut self, range: Range<usize>) {
-        unsafe { self.pointer.drop_range(range) }
     }
 
     /// Clones values of type `T` from the memory space pointed to by the source pointer `source`.
