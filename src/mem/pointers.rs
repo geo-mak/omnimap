@@ -187,6 +187,74 @@ impl<T> UnmanagedPointer<T> {
         self.ptr = ptr::null_mut();
     }
 
+    /// Calls `drop` on the initialized elements with the specified `count` starting from the
+    /// offset `0`.
+    ///
+    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
+    /// the drop range `[0, count - 1]`.
+    ///
+    /// This method is no-op when `count` is `0` or when `T` is of trivial type.
+    ///
+    /// # Safety
+    ///
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
+    ///
+    /// - `count` must be within the bounds of the **initialized** elements.
+    ///   Calling `drop` on uninitialized elements is `undefined behavior`.
+    ///
+    /// - If `T` is not of trivial type, using dropped values after calling this method is `undefined behavior`.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(n) where `n` is the number (`count`) of the elements to be dropped.
+    ///
+    #[inline(always)]
+    pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
+        #[cfg(debug_assertions)]
+        debug_assert_not_null(self.ptr);
+
+        let drop_slice = ptr::slice_from_raw_parts_mut(self.ptr, count);
+
+        unsafe { drop_slice.drop_in_place() };
+    }
+
+    /// Calls `drop` on the initialized elements in the specified range.
+    ///
+    /// The total drop `count` equals `end - start`.
+    ///
+    /// This method is no-op if `T` is of a trivial type.
+    ///
+    /// # Safety
+    ///
+    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
+    ///
+    /// - `range` must not be empty.
+    ///
+    /// - `range` must be within the bounds of the **initialized** elements.
+    ///   Calling `drop` on uninitialized elements is `undefined behavior`.
+    ///
+    /// - If `T` is not of trivial type, using dropped values after calling this method is `undefined behavior`.
+    ///
+    /// These invariants are checked in debug mode only.
+    ///
+    /// # Time Complexity
+    ///
+    /// _O_(n) where `n` is the number (`count`) of the elements to be dropped.
+    ///
+    #[inline(always)]
+    pub(crate) unsafe fn drop_range(&mut self, range: Range<usize>) {
+        #[cfg(debug_assertions)]
+        debug_assert_not_null(self.ptr);
+        debug_assert!(!range.is_empty(), "Drop range must not be empty");
+
+        unsafe {
+            let drop_ptr = self.ptr.add(range.start);
+            let drop_len = range.end - range.start;
+            let drop_slice = ptr::slice_from_raw_parts_mut(drop_ptr, drop_len);
+            drop_slice.drop_in_place();
+        };
+    }
+
     /// Checks if the pointer is `null`.
     #[must_use]
     #[inline(always)]
@@ -512,74 +580,6 @@ impl<T> UnmanagedPointer<T> {
             let dst = (self.ptr).add(dst);
             dst.copy_from(src, 1);
         }
-    }
-
-    /// Calls `drop` on the initialized elements with the specified `count` starting from the
-    /// offset `0`.
-    ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the drop range `[0, count - 1]`.
-    ///
-    /// This method is no-op when `count` is `0` or when `T` is of trivial type.
-    ///
-    /// # Safety
-    ///
-    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
-    ///
-    /// - `count` must be within the bounds of the **initialized** elements.
-    ///   Calling `drop` on uninitialized elements is `undefined behavior`.
-    ///
-    /// - If `T` is not of trivial type, using dropped values after calling this method is `undefined behavior`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) where `n` is the number (`count`) of the elements to be dropped.
-    ///
-    #[inline(always)]
-    pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
-        #[cfg(debug_assertions)]
-        debug_assert_not_null(self.ptr);
-
-        let drop_slice = ptr::slice_from_raw_parts_mut(self.ptr, count);
-
-        unsafe { drop_slice.drop_in_place() };
-    }
-
-    /// Calls `drop` on the initialized elements in the specified range.
-    ///
-    /// The total drop `count` equals `end - start`.
-    ///
-    /// This method is no-op if `T` is of a trivial type.
-    ///
-    /// # Safety
-    ///
-    /// - Pointer must point to an already allocated memory-segment aligned to the alignment of `T`.
-    ///
-    /// - `range` must not be empty.
-    ///
-    /// - `range` must be within the bounds of the **initialized** elements.
-    ///   Calling `drop` on uninitialized elements is `undefined behavior`.
-    ///
-    /// - If `T` is not of trivial type, using dropped values after calling this method is `undefined behavior`.
-    ///
-    /// These invariants are checked in debug mode only.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) where `n` is the number (`count`) of the elements to be dropped.
-    ///
-    #[inline(always)]
-    pub(crate) unsafe fn drop_range(&mut self, range: Range<usize>) {
-        #[cfg(debug_assertions)]
-        debug_assert_not_null(self.ptr);
-        debug_assert!(!range.is_empty(), "Drop range must not be empty");
-
-        unsafe {
-            let drop_ptr = self.ptr.add(range.start);
-            let drop_len = range.end - range.start;
-            let drop_slice = ptr::slice_from_raw_parts_mut(drop_ptr, drop_len);
-            drop_slice.drop_in_place();
-        };
     }
 
     /// Clones values of type `T` from the memory space pointed to by the source pointer `source`.
