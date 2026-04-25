@@ -62,7 +62,7 @@ impl MapIndex {
     ///
     /// This function checks for overflow and valid layout's size.
     #[inline]
-    fn index_layout(cap: usize) -> Option<(Layout, usize)> {
+    fn make_layout(cap: usize) -> Option<(Layout, usize)> {
         let slots_size = cap.checked_mul(Self::T_SIZE)?;
 
         let aligned_tags = (cap + Self::T_ALIGN - 1) & !(Self::T_ALIGN - 1);
@@ -83,7 +83,7 @@ impl MapIndex {
     ///
     /// This function **doesn't** check for overflow and valid layout size.
     #[inline]
-    const unsafe fn index_layout_unchecked(cap: usize) -> (Layout, usize) {
+    const unsafe fn make_layout_unchecked(cap: usize) -> (Layout, usize) {
         let slots_size = cap * Self::T_SIZE;
 
         let aligned_tags = (cap + Self::T_ALIGN - 1) & !(Self::T_ALIGN - 1);
@@ -112,7 +112,7 @@ impl MapIndex {
         cap: usize,
         on_err: OnError,
     ) -> Result<Self, MemoryError> {
-        match Self::index_layout(cap) {
+        match Self::make_layout(cap) {
             Some((layout, slots_size)) => {
                 let mut pointer = UnmanagedPointer::new();
 
@@ -138,7 +138,7 @@ impl MapIndex {
     #[inline]
     pub(crate) unsafe fn release(&mut self, cap: usize) {
         unsafe {
-            let (layout, slots_size) = Self::index_layout_unchecked(cap);
+            let (layout, slots_size) = Self::make_layout_unchecked(cap);
             // Reset the pointer to the start of the allocated memory.
             self.pointer.decrement(slots_size);
             self.pointer.release_memory(layout)
@@ -266,7 +266,7 @@ mod index_tests {
 
     #[test]
     fn test_index_layout() {
-        let (layout, slots_size) = MapIndex::index_layout(10).unwrap();
+        let (layout, slots_size) = MapIndex::make_layout(10).unwrap();
 
         assert_eq!(layout.align(), 8);
 
