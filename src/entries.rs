@@ -93,7 +93,7 @@ impl<K, V> Entries<K, V> {
         count: usize,
         on_err: OnError,
     ) -> Result<Layout, MemoryError> {
-        unsafe { self.pointer.layout_of(count, on_err) }
+        unsafe { self.pointer.make_layout(count, on_err) }
     }
 
     /// Creates a new layout for the specified `count` of entries.
@@ -103,7 +103,7 @@ impl<K, V> Entries<K, V> {
     #[must_use]
     #[inline(always)]
     pub(crate) const unsafe fn make_layout_unchecked(&self, count: usize) -> Layout {
-        unsafe { self.pointer.layout_unchecked_of(count) }
+        unsafe { self.pointer.make_layout_unchecked(count) }
     }
 
     #[inline]
