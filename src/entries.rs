@@ -106,7 +106,7 @@ impl<K, V> Entries<K, V> {
         unsafe { self.pointer.make_layout_unchecked(count) }
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn acquire_memory(
         &mut self,
         layout: Layout,
@@ -115,7 +115,7 @@ impl<K, V> Entries<K, V> {
         unsafe { self.pointer.acquire_memory(layout, on_err) }
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn release_memory(&mut self, layout: Layout) {
         unsafe { self.pointer.release_memory(layout) }
     }
