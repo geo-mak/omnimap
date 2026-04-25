@@ -1388,7 +1388,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         // The fields that need deallocation are index and entries.
         // index must be deallocated here and entries shall be deallocated by the iterator.
         unsafe {
-            manual_self.core.index.release(iterator.cap);
+            manual_self.core.index.release_memory(iterator.cap);
             iterator.entries = manual_self.core.entries.duplicate();
         }
 

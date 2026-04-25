@@ -136,7 +136,7 @@ impl MapIndex {
     /// - Index must be allocated before calling this method.
     /// - `cap` must be the same allocated capacity.
     #[inline]
-    pub(crate) unsafe fn release(&mut self, cap: usize) {
+    pub(crate) unsafe fn release_memory(&mut self, cap: usize) {
         unsafe {
             let (layout, slots_size) = Self::make_layout_unchecked(cap);
             // Reset the pointer to the start of the allocated memory.
@@ -289,7 +289,7 @@ mod index_tests {
 
             assert!(!instance.pointer.is_null());
 
-            instance.release(10)
+            instance.release_memory(10)
         }
     }
 
@@ -320,7 +320,7 @@ mod index_tests {
                 assert!(instance.load_tag(i).is_used());
             }
 
-            instance.release(10)
+            instance.release_memory(10)
         }
     }
 
@@ -339,7 +339,7 @@ mod index_tests {
                 assert_eq!(instance.load_entry_index(i), 11);
             }
 
-            instance.release(10)
+            instance.release_memory(10)
         }
     }
 
@@ -370,8 +370,8 @@ mod index_tests {
                 assert_eq!(target.load_entry_index(i), 11);
             }
 
-            source.release(10);
-            target.release(10)
+            source.release_memory(10);
+            target.release_memory(10)
         }
     }
 
@@ -392,7 +392,7 @@ mod index_tests {
                 assert!(instance.load_tag(i).is_free());
             }
 
-            instance.release(10);
+            instance.release_memory(10);
         }
     }
 }

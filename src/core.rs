@@ -93,7 +93,7 @@ impl<K, V> CoreMap<K, V> {
 
             let mut index = MapIndex::new_acquire_uninit(cap, on_err)?;
 
-            let error_guard = OnDrop::set_on(cap, |cap| index.release(*cap));
+            let error_guard = OnDrop::set_on(cap, |cap| index.release_memory(*cap));
 
             entries.acquire_memory(layout, on_err)?;
 
@@ -272,7 +272,7 @@ impl<K, V> CoreMap<K, V> {
         unsafe {
             let layout = self.entries.make_layout_unchecked(self.cap);
             self.entries.release_memory(layout);
-            self.index.release(self.cap);
+            self.index.release_memory(self.cap);
         }
     }
 
