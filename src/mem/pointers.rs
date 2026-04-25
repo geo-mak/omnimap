@@ -18,8 +18,13 @@ use crate::opt::branch_hints::likely;
 /// An indirect reference to _one or more_ values of type `T` consecutively in memory,
 /// with set of methods for accessing and managing memory directly.
 ///
-/// It extends the common pointer operations with more operations that simplify the development of custom data structures.
-///  
+/// It extends the common pointer operations with more operations that simplify the development 
+/// of custom data structures.
+/// 
+/// The simplification factor comes from the fact that it provides a lot of common methods with 
+/// very rich set of tests related to memory semantics, while at the same it has very simple type 
+/// requirement `T`. `T` in upper layers can be changed continuously while all tests remain valid.
+/// 
 /// It doesn't store any metadata about its allocated memory, such as the size of
 /// the allocated memory and the number of initialized elements, therefore it doesn't provide
 /// checked operations or automatic memory management.
