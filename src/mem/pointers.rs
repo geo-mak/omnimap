@@ -134,7 +134,7 @@ impl<T> UnmanagedPointer<T> {
     ///
     /// - `size` in bytes, when rounded up to the nearest multiple of `align`, must be less than
     ///   or equal to `isize::MAX` bytes.
-    pub(crate) unsafe fn acquire(
+    pub(crate) unsafe fn acquire_memory(
         &mut self,
         layout: Layout,
         on_err: OnError,
@@ -170,7 +170,7 @@ impl<T> UnmanagedPointer<T> {
     ///   dropped properly before calling this method.
     ///
     /// - `layout` must be the same layout used to allocate the memory space.
-    pub(crate) unsafe fn release(&mut self, layout: Layout) {
+    pub(crate) unsafe fn release_memory(&mut self, layout: Layout) {
         #[cfg(debug_assertions)]
         debug_assert_not_null(self.ptr);
 
@@ -709,11 +709,11 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             assert!(!alloc_ptr.is_null());
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -723,12 +723,12 @@ mod alloc_ptr_tests {
 
         unsafe {
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let result = alloc_ptr.acquire(layout, OnError::Panic);
+            let result = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             assert!(result.is_ok());
             assert!(!alloc_ptr.is_null());
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -740,11 +740,11 @@ mod alloc_ptr_tests {
         let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
         unsafe {
             let layout = alloc_ptr.layout_unchecked_of(1);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             assert!(!alloc_ptr.is_null());
 
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
         }
     }
 
@@ -755,11 +755,11 @@ mod alloc_ptr_tests {
 
             let layout = alloc_ptr.layout_unchecked_of(3);
 
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             assert!(!alloc_ptr.is_null());
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
 
             assert!(alloc_ptr.is_null());
         }
@@ -770,7 +770,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             for i in 0..3 {
                 alloc_ptr.store(i, i as u8 + 1);
@@ -786,7 +786,7 @@ mod alloc_ptr_tests {
                 assert_eq!(*alloc_ptr.reference(i), 0);
             }
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -795,7 +795,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             for i in 0..3 {
                 alloc_ptr.store(i, i as u8 + 1);
@@ -805,7 +805,7 @@ mod alloc_ptr_tests {
             assert_eq!(*alloc_ptr.reference(1), 2);
             assert_eq!(*alloc_ptr.reference(2), 3);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -814,7 +814,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             alloc_ptr.store(0, 1);
             alloc_ptr.store(1, 2);
@@ -823,7 +823,7 @@ mod alloc_ptr_tests {
 
             assert_eq!(*alloc_ptr.reference(0), 10);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -832,14 +832,14 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             alloc_ptr.store(0, 1);
             alloc_ptr.store(1, 2);
 
             assert_eq!(alloc_ptr.as_ref(), &1);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -848,7 +848,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             alloc_ptr.store(0, 1);
             alloc_ptr.store(1, 2);
@@ -857,7 +857,7 @@ mod alloc_ptr_tests {
 
             assert_eq!(*alloc_ptr.reference(1), 2);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -866,7 +866,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(5);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             for i in 0..5 {
                 alloc_ptr.store(i, i as u8 + 1);
@@ -880,7 +880,7 @@ mod alloc_ptr_tests {
             assert_eq!(*alloc_ptr.reference(3), 5);
             assert_eq!(*alloc_ptr.reference(4), 5);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -889,7 +889,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             alloc_ptr.store(0, 10);
             alloc_ptr.store(1, 20);
@@ -901,7 +901,7 @@ mod alloc_ptr_tests {
             assert_eq!(*alloc_ptr.reference(1), 20);
             assert_eq!(*alloc_ptr.reference(2), 10);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -919,12 +919,12 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             let slice = alloc_ptr.as_slice(0);
             assert_eq!(slice, &[]);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -933,7 +933,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             for i in 0..3 {
                 alloc_ptr.store(i, i as u8 + 1);
@@ -942,7 +942,7 @@ mod alloc_ptr_tests {
             let slice = alloc_ptr.as_slice(3);
             assert_eq!(slice, &[1, 2, 3]);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -960,12 +960,12 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             let slice = alloc_ptr.as_slice_mut(0);
             assert_eq!(slice, &[]);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -974,7 +974,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             for i in 0..3 {
                 alloc_ptr.store(i, i as u8 + 1);
@@ -983,7 +983,7 @@ mod alloc_ptr_tests {
             let slice = alloc_ptr.as_slice_mut(3);
             assert_eq!(slice, &mut [1, 2, 3]);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -1005,7 +1005,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<DropCounter> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(3);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             for i in 0..3 {
                 alloc_ptr.store(
@@ -1023,7 +1023,7 @@ mod alloc_ptr_tests {
 
             assert_eq!(*drop_count.borrow(), 3);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -1035,7 +1035,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(5);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
             alloc_ptr.drop_range(0..0);
         }
     }
@@ -1047,7 +1047,7 @@ mod alloc_ptr_tests {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<DropCounter> = UnmanagedPointer::new();
             let layout = alloc_ptr.layout_unchecked_of(5);
-            let _ = alloc_ptr.acquire(layout, OnError::Panic);
+            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             for i in 0..5 {
                 alloc_ptr.store(
@@ -1064,7 +1064,7 @@ mod alloc_ptr_tests {
 
             alloc_ptr.drop_range(3..5);
 
-            alloc_ptr.release(layout);
+            alloc_ptr.release_memory(layout);
         }
     }
 
@@ -1073,14 +1073,14 @@ mod alloc_ptr_tests {
         unsafe {
             let mut source: UnmanagedPointer<u8> = UnmanagedPointer::new();
             let layout = source.layout_unchecked_of(3);
-            let _ = source.acquire(layout, OnError::Panic);
+            let _ = source.acquire_memory(layout, OnError::Panic);
 
             for i in 0..3 {
                 source.store(i, i as u8 + 1);
             }
 
             let mut target: UnmanagedPointer<u8> = UnmanagedPointer::new();
-            let _ = target.acquire(layout, OnError::Panic);
+            let _ = target.acquire_memory(layout, OnError::Panic);
 
             target.clone_from(source.ptr, 3);
 
@@ -1088,8 +1088,8 @@ mod alloc_ptr_tests {
                 assert_eq!(*source.reference(i), *target.reference(i));
             }
 
-            source.release(layout);
-            target.release(layout);
+            source.release_memory(layout);
+            target.release_memory(layout);
         }
     }
 
@@ -1125,8 +1125,8 @@ mod alloc_ptr_tests {
         let mut target: UnmanagedPointer<PanicOnClone> = UnmanagedPointer::new();
         unsafe {
             let layout = source.layout_unchecked_of(10);
-            let _ = source.acquire(layout, OnError::Panic);
-            let _ = target.acquire(layout, OnError::Panic);
+            let _ = source.acquire_memory(layout, OnError::Panic);
+            let _ = target.acquire_memory(layout, OnError::Panic);
 
             let drop_counter = Rc::new(RefCell::new(0));
             for i in 0..10 {
@@ -1150,8 +1150,8 @@ mod alloc_ptr_tests {
             assert!(result.is_err());
             assert_eq!(*drop_counter.borrow(), 5);
 
-            source.release(layout);
-            target.release(layout);
+            source.release_memory(layout);
+            target.release_memory(layout);
         }
     }
 }

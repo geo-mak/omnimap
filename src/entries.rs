@@ -112,12 +112,12 @@ impl<K, V> Entries<K, V> {
         layout: Layout,
         on_err: OnError,
     ) -> Result<(), MemoryError> {
-        unsafe { self.pointer.acquire(layout, on_err) }
+        unsafe { self.pointer.acquire_memory(layout, on_err) }
     }
 
     #[inline]
     pub(crate) fn release_memory(&mut self, layout: Layout) {
-        unsafe { self.pointer.release(layout) }
+        unsafe { self.pointer.release_memory(layout) }
     }
 
     /// Checks if the pointer is `null`.
