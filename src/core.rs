@@ -1,13 +1,12 @@
 use core::borrow::Borrow;
-use core::fmt::Debug;
 use core::hash::{Hash, Hasher};
 use core::hint::unreachable_unchecked;
+use core::mem;
 use core::slice::{Iter, IterMut};
-use core::{fmt, mem};
 
 use std::collections::hash_map::DefaultHasher;
 
-use crate::entries::Entries;
+use crate::entries::{Entries, Entry};
 use crate::index::{MapIndex, Tag};
 use crate::mem::error::{MemoryError, OnError};
 use crate::opt::OnDrop;
@@ -25,66 +24,6 @@ where
     #[inline(always)]
     fn eq_key(&self, key: &K) -> bool {
         self == key.borrow()
-    }
-}
-
-pub struct Entry<K, V> {
-    pub(crate) key: K,
-    pub(crate) value: V,
-    pub(crate) hash: usize,
-}
-
-// Private.
-impl<K, V> Entry<K, V> {
-    #[inline(always)]
-    pub(crate) const fn new(key: K, value: V, hash: usize) -> Self {
-        Self { key, value, hash }
-    }
-}
-
-// Public.
-impl<K, V> Entry<K, V> {
-    #[inline(always)]
-    pub const fn key(&self) -> &K {
-        &self.key
-    }
-
-    #[inline(always)]
-    pub const fn value(&self) -> &V {
-        &self.value
-    }
-
-    #[inline(always)]
-    pub const fn value_mut(&mut self) -> &mut V {
-        &mut self.value
-    }
-}
-
-impl<K, V> Clone for Entry<K, V>
-where
-    K: Clone,
-    V: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            key: self.key.clone(),
-            value: self.value.clone(),
-            hash: self.hash,
-        }
-    }
-}
-
-impl<K, V> Debug for Entry<K, V>
-where
-    K: Debug,
-    V: Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Entry")
-            .field("key", &self.key)
-            .field("value", &self.value)
-            .field("hash", &self.hash)
-            .finish()
     }
 }
 

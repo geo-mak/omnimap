@@ -9,8 +9,8 @@ use core::ops::{Index, IndexMut};
 use core::slice::{Iter, IterMut};
 use core::{fmt, mem};
 
-use crate::core::{CoreMap, Entry};
-use crate::entries::Entries;
+use crate::core::CoreMap;
+use crate::entries::{Entries, Entry};
 use crate::index::Tag;
 use crate::mem::error::{MemoryError, OnError};
 use crate::opt::OnDrop;

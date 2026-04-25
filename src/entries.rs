@@ -1,10 +1,70 @@
+use core::fmt::{self, Debug};
 use core::ops::Range;
 
 use std::alloc::Layout;
 
-use crate::Entry;
 use crate::mem::error::{MemoryError, OnError};
 use crate::mem::pointers::UnmanagedPointer;
+
+pub struct Entry<K, V> {
+    pub(crate) key: K,
+    pub(crate) value: V,
+    pub(crate) hash: usize,
+}
+
+// Private.
+impl<K, V> Entry<K, V> {
+    #[inline(always)]
+    pub(crate) const fn new(key: K, value: V, hash: usize) -> Self {
+        Self { key, value, hash }
+    }
+}
+
+// Public.
+impl<K, V> Entry<K, V> {
+    #[inline(always)]
+    pub const fn key(&self) -> &K {
+        &self.key
+    }
+
+    #[inline(always)]
+    pub const fn value(&self) -> &V {
+        &self.value
+    }
+
+    #[inline(always)]
+    pub const fn value_mut(&mut self) -> &mut V {
+        &mut self.value
+    }
+}
+
+impl<K, V> Clone for Entry<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            key: self.key.clone(),
+            value: self.value.clone(),
+            hash: self.hash,
+        }
+    }
+}
+
+impl<K, V> Debug for Entry<K, V>
+where
+    K: Debug,
+    V: Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Entry")
+            .field("key", &self.key)
+            .field("value", &self.value)
+            .field("hash", &self.hash)
+            .finish()
+    }
+}
 
 pub(crate) struct Entries<K, V> {
     pointer: UnmanagedPointer<Entry<K, V>>,

@@ -15,6 +15,6 @@ pub use map::{
     ValuesIteratorMut,
 };
 
-pub use crate::core::Entry;
+pub use crate::entries::Entry;
 
 pub use mem::error::MemoryError;
