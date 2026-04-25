@@ -203,11 +203,6 @@ impl<T> UnmanagedPointer<T> {
     ///   Calling `drop` on uninitialized elements is `undefined behavior`.
     ///
     /// - If `T` is not of trivial type, using dropped values after calling this method is `undefined behavior`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) where `n` is the number (`count`) of the elements to be dropped.
-    ///
     #[inline(always)]
     pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
         #[cfg(debug_assertions)]
@@ -236,11 +231,6 @@ impl<T> UnmanagedPointer<T> {
     /// - If `T` is not of trivial type, using dropped values after calling this method is `undefined behavior`.
     ///
     /// These invariants are checked in debug mode only.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) where `n` is the number (`count`) of the elements to be dropped.
-    ///
     #[inline(always)]
     pub(crate) unsafe fn drop_range(&mut self, range: Range<usize>) {
         #[cfg(debug_assertions)]
@@ -305,11 +295,6 @@ impl<T> UnmanagedPointer<T> {
     ///
     /// - The value at the current address must be an initialized value of type T.
     ///   Accessing an uninitialized element as `T` is `undefined behavior`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
-    ///
     #[must_use]
     #[inline(always)]
     pub(crate) const unsafe fn as_ref(&self) -> &T {
@@ -330,11 +315,6 @@ impl<T> UnmanagedPointer<T> {
     ///
     /// - `count` must be within the bounds of the initialized elements.
     ///   Loading an uninitialized elements as `T` is `undefined behavior`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
-    ///
     #[inline(always)]
     pub(crate) const unsafe fn as_slice(&self, count: usize) -> &[T] {
         #[cfg(debug_assertions)]
@@ -356,11 +336,6 @@ impl<T> UnmanagedPointer<T> {
     ///
     /// - `count` must be within the bounds of the initialized elements.
     ///   Accessing an uninitialized elements as `T` is `undefined behavior`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
-    ///
     #[inline(always)]
     pub(crate) const unsafe fn as_slice_mut(&mut self, count: usize) -> &mut [T] {
         #[cfg(debug_assertions)]
@@ -424,10 +399,6 @@ impl<T> UnmanagedPointer<T> {
     /// - Initialized elements will be overwritten **without** calling `drop`.
     ///   This might cause memory leaks if `T` is not of trivial type, or if the elements are not
     ///   dropped properly before calling this method.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) where `n` is the `count` of type `T`.
     #[inline(always)]
     pub(crate) const unsafe fn memset_zero(&mut self, count: usize) {
         #[cfg(debug_assertions)]
@@ -468,10 +439,6 @@ impl<T> UnmanagedPointer<T> {
     ///
     /// - The value at the provided `offset` must be an initialized value of type T.
     ///   Accessing an uninitialized element as `T` is `undefined behavior`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
     #[must_use]
     #[inline(always)]
     pub(crate) const unsafe fn reference(&self, offset: usize) -> &T {
@@ -489,11 +456,6 @@ impl<T> UnmanagedPointer<T> {
     ///
     /// - The value at the provided `offset` must be an initialized value of type T.
     ///   Accessing an uninitialized element as `T` is `undefined behavior`.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
-    ///
     #[must_use]
     #[inline(always)]
     pub(crate) const unsafe fn reference_mut(&mut self, offset: usize) -> &mut T {
@@ -516,10 +478,6 @@ impl<T> UnmanagedPointer<T> {
     ///
     /// - If `T` is not a trivial type, the value at this offset can be in an invalid state after
     ///   calling this method, because it might have been dropped by the caller.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
     #[inline(always)]
     pub(crate) const unsafe fn read_for_ownership(&mut self, offset: usize) -> T {
         #[cfg(debug_assertions)]
@@ -536,10 +494,6 @@ impl<T> UnmanagedPointer<T> {
     /// - Pointer must point to an already allocated memory-segment.
     ///
     /// - `offset + count` must be within the bounds of the allocated memory.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(n) where `n` is the number (`count`) of the elements to be shifted.
     #[inline(always)]
     pub const unsafe fn shift_left(&mut self, offset: usize, count: usize) {
         #[cfg(debug_assertions)]
@@ -566,10 +520,6 @@ impl<T> UnmanagedPointer<T> {
     /// - If the value at offset `dst` has been initialized already, the value will be overwritten **without**
     ///   calling `drop`. This might cause memory leaks if the element is not of trivial type,
     ///   or not dropped properly before overwriting.
-    ///
-    /// # Time Complexity
-    ///
-    /// _O_(1).
     #[inline(always)]
     pub const unsafe fn memmove_one(&mut self, src: usize, dst: usize) {
         #[cfg(debug_assertions)]
