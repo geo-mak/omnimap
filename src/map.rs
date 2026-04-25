@@ -239,7 +239,10 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        match self.core.acquire_additional(additional, OnError::Panic) {
+        match self
+            .core
+            .acquire_additional_memory(additional, OnError::Panic)
+        {
             Ok(_) => (),
             // Hints the compiler that the error branch can be eliminated from the call chain.
             Err(_) => unsafe { unreachable_unchecked() },
@@ -289,7 +292,8 @@ impl<K, V> OmniMap<K, V> {
     /// ```
     #[inline]
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), MemoryError> {
-        self.core.acquire_additional(additional, OnError::ReturnErr)
+        self.core
+            .acquire_additional_memory(additional, OnError::ReturnErr)
     }
 
     /// Returns the first entry in the map.

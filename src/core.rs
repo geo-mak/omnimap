@@ -222,16 +222,17 @@ impl<K, V> CoreMap<K, V> {
         }
     }
 
-    /// Tries to reserve `additional` capacity.
+    /// Tries to reserve `additional` memory.
     ///
     /// All internal calls are checked, with result depends on the error handling context `on_err`.
-    pub(crate) fn acquire_additional(
+    pub(crate) fn acquire_additional_memory(
         &mut self,
-        additional: usize,
+        count: usize,
         on_err: OnError,
     ) -> Result<(), MemoryError> {
-        if likely(additional != 0) {
-            let extra_cap = Self::allocation_capacity(additional, on_err)?;
+        if likely(count != 0) {
+            let extra_cap = Self::allocation_capacity(count, on_err)?;
+            
             if likely(self.cap != 0) {
                 match self.cap.checked_add(extra_cap) {
                     Some(new_cap) => unsafe { self.adjust_used_layout(new_cap, on_err) },
@@ -342,6 +343,7 @@ impl<K, V> CoreMap<K, V> {
 
                 'probing: loop {
                     let tag = self.index.tag_ref_mut(slot);
+
                     if tag.is_free() {
                         *tag = Tag::Used;
                         self.index.store_entry_index(slot, i);
