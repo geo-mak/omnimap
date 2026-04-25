@@ -5,81 +5,15 @@ use core::ptr;
 
 use std::alloc::{self, alloc};
 
+#[cfg(debug_assertions)]
+use crate::mem::assertions::{
+    debug_assert_is_null, debug_assert_non_zero_size, debug_assert_not_null,
+    debug_assert_valid_alignment, debug_layout_size_align,
+};
+
 use crate::mem::error::{MemoryError, OnError};
 use crate::opt::OnDrop;
 use crate::opt::branch_hints::likely;
-
-/// Debug-mode check for the valid alignment.
-/// This function is only available in debug builds.
-///
-/// Conditions:
-///
-/// - `align` of `T` must not be zero.
-///
-/// - `align` of `T` must be a power of two.
-#[cfg(debug_assertions)]
-const fn debug_assert_valid_alignment(align: usize) {
-    assert!(align.is_power_of_two(), "Alignment must be a power of two");
-}
-
-/// Debug-mode check for the valid allocation size.
-/// This function is only available in debug builds.
-///
-/// Conditions:
-///
-/// - `size` must be greater than `0`.
-#[cfg(debug_assertions)]
-const fn debug_assert_non_zero_size(size: usize) {
-    assert!(size > 0, "Allocation size must be greater than 0");
-}
-
-/// Debug-mode check for the layout size and alignment.
-/// This function is only available in debug builds.
-///
-/// Conditions:
-///
-/// - `align` of `T` must not be zero.
-///
-/// - `align` of `T` must be a power of two.
-///
-/// - `size` must be greater than `0`.
-///
-/// - `size`, when rounded up to the nearest multiple of `align`, must be less than or
-///   equal to `isize::MAX`.
-///
-#[cfg(debug_assertions)]
-const fn debug_layout_size_align(size: usize, align: usize) {
-    debug_assert_valid_alignment(align);
-    debug_assert_non_zero_size(size);
-    assert!(
-        ((isize::MAX as usize + 1) - align) >= size,
-        "Allocation size exceeds maximum limit on this platform"
-    );
-}
-
-/// Debug-mode check to check the allocation state.
-/// This function is only available in debug builds.
-///
-/// Conditions:
-///
-/// - The pointer must not be null.
-///
-#[cfg(debug_assertions)]
-const fn debug_assert_not_null<T>(instance: &UnmanagedPointer<T>) {
-    assert!(!instance.ptr.is_null(), "Pointer must not be null");
-}
-
-/// Debug-mode check to check the allocation state.
-/// This function is only available in debug builds.
-///
-/// Conditions:
-///
-/// - The pointer must be null.
-///
-#[cfg(debug_assertions)]
-const fn debug_assert_is_null<T>(instance: &UnmanagedPointer<T>) {
-    assert!(instance.ptr.is_null(), "Pointer must be null");
-}
 
 /// An indirect reference to _one or more_ values of type `T` consecutively in memory,
 /// with set of methods for accessing and managing memory directly.
@@ -206,7 +140,7 @@ impl<T> UnmanagedPointer<T> {
         on_err: OnError,
     ) -> Result<(), MemoryError> {
         #[cfg(debug_assertions)]
-        debug_assert_is_null(self);
+        debug_assert_is_null(self.ptr);
 
         #[cfg(debug_assertions)]
         debug_layout_size_align(layout.size(), layout.align());
@@ -238,7 +172,7 @@ impl<T> UnmanagedPointer<T> {
     /// - `layout` must be the same layout used to allocate the memory space.
     pub(crate) unsafe fn release(&mut self, layout: Layout) {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         #[cfg(debug_assertions)]
         debug_layout_size_align(layout.size(), layout.align());
@@ -275,7 +209,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn as_ptr(&self) -> *const T {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         self.ptr
     }
@@ -285,7 +219,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn as_ptr_mut(&self) -> *mut T {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         self.ptr
     }
@@ -307,7 +241,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn as_ref(&self) -> &T {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe { &*self.ptr }
     }
@@ -331,7 +265,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn as_slice(&self, count: usize) -> &[T] {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         let slice_ptr = ptr::slice_from_raw_parts(self.ptr, count);
 
@@ -357,7 +291,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn as_slice_mut(&mut self, count: usize) -> &mut [T] {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         let slice_ptr = ptr::slice_from_raw_parts_mut(self.ptr, count);
 
@@ -369,7 +303,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn cast<C>(&self) -> *const C {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         self.ptr.cast::<C>()
     }
@@ -379,7 +313,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn cast_mut<C>(&mut self) -> *mut C {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         self.ptr.cast::<C>()
     }
@@ -388,7 +322,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn increment(&mut self, t_strides: usize) {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe { self.ptr = self.ptr.add(t_strides) };
     }
@@ -397,7 +331,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn decrement(&mut self, t_strides: usize) {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe { self.ptr = self.ptr.sub(t_strides) };
     }
@@ -424,7 +358,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn memset_zero(&mut self, count: usize) {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe { self.ptr.write_bytes(0, count) }
     }
@@ -448,7 +382,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn store(&mut self, offset: usize, value: T) {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe { self.ptr.add(offset).write(value) };
     }
@@ -469,7 +403,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn reference(&self, offset: usize) -> &T {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe { &*self.ptr.add(offset) }
     }
@@ -491,7 +425,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn reference_mut(&mut self, offset: usize) -> &mut T {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe { &mut *(self.ptr).add(offset) }
     }
@@ -516,7 +450,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) const unsafe fn read_for_ownership(&mut self, offset: usize) -> T {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe { self.ptr.add(offset).read() }
     }
@@ -536,7 +470,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub const unsafe fn shift_left(&mut self, offset: usize, count: usize) {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe {
             let dst = self.ptr.add(offset);
@@ -566,7 +500,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub const unsafe fn memmove_one(&mut self, src: usize, dst: usize) {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         unsafe {
             let src = (self.ptr).add(src);
@@ -599,7 +533,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
 
         let drop_slice = ptr::slice_from_raw_parts_mut(self.ptr, count);
 
@@ -632,7 +566,7 @@ impl<T> UnmanagedPointer<T> {
     #[inline(always)]
     pub(crate) unsafe fn drop_range(&mut self, range: Range<usize>) {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
         debug_assert!(!range.is_empty(), "Drop range must not be empty");
 
         unsafe {
@@ -665,7 +599,7 @@ impl<T> UnmanagedPointer<T> {
         T: Clone,
     {
         #[cfg(debug_assertions)]
-        debug_assert_not_null(self);
+        debug_assert_not_null(self.ptr);
         debug_assert!(!source.is_null());
 
         let self_ptr = self.ptr;
