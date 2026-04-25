@@ -170,11 +170,9 @@ impl<K, V> CoreMap<K, V> {
         let current_len = self.len;
 
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                self.entries.as_ptr(),
-                core.entries.as_ptr_mut(),
-                current_len,
-            )
+            core.entries
+                .as_ptr_mut()
+                .copy_from_nonoverlapping(self.entries.as_ptr(), current_len);
         };
 
         core.len = current_len;
