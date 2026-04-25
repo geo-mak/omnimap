@@ -125,7 +125,7 @@ impl<K, V> CoreMap<K, V> {
         on_err: OnError,
     ) -> Result<CoreMap<K, V>, MemoryError> {
         let mut instance = Self::new_acquire_uninit(cap, on_err)?;
-        unsafe { instance.index.reset_tags(cap) };
+        unsafe { instance.index.set_tags_free(cap) };
         Ok(instance)
     }
 
@@ -328,7 +328,7 @@ impl<K, V> CoreMap<K, V> {
     /// of the index.
     #[inline(always)]
     fn reindex(&mut self) {
-        unsafe { self.index.reset_tags(self.cap) };
+        unsafe { self.index.set_tags_free(self.cap) };
         self.free = self.usable_capacity() - self.len;
         self.build_index();
     }

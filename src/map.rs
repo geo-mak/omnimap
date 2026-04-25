@@ -506,7 +506,7 @@ impl<K, V> OmniMap<K, V> {
         }
 
         let protected_clear = OnDrop::set_on(self, |current| {
-            unsafe { current.core.index.reset_tags(current.core.cap) };
+            unsafe { current.core.index.set_tags_free(current.core.cap) };
             current.core.len = 0;
             current.core.free = current.core.usable_capacity();
         });

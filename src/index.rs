@@ -255,7 +255,7 @@ impl MapIndex {
     ///
     /// Index must be allocated before calling this method.
     #[inline(always)]
-    pub(crate) const unsafe fn reset_tags(&mut self, cap: usize) {
+    pub(crate) const unsafe fn set_tags_free(&mut self, cap: usize) {
         unsafe { self.pointer.memset_zero(cap) }
     }
 }
@@ -306,7 +306,7 @@ mod index_tests {
         unsafe {
             let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
-            instance.reset_tags(10);
+            instance.set_tags_free(10);
 
             for i in 0..10 {
                 assert!(instance.load_tag(i).is_free());
@@ -329,7 +329,7 @@ mod index_tests {
         unsafe {
             let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
-            instance.reset_tags(10);
+            instance.set_tags_free(10);
 
             for i in 0..10 {
                 instance.store_entry_index(i, 11)
@@ -348,7 +348,7 @@ mod index_tests {
         unsafe {
             let mut source = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
-            source.reset_tags(10);
+            source.set_tags_free(10);
 
             for i in 0..10 {
                 source.store_tag(i, Tag::Used)
@@ -380,13 +380,13 @@ mod index_tests {
         unsafe {
             let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
 
-            instance.reset_tags(10);
+            instance.set_tags_free(10);
 
             for i in 0..10 {
                 instance.store_tag(i, Tag::Used)
             }
 
-            instance.reset_tags(10);
+            instance.set_tags_free(10);
 
             for i in 0..10 {
                 assert!(instance.load_tag(i).is_free());
