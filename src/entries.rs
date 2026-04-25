@@ -66,6 +66,9 @@ where
     }
 }
 
+/// An abstraction layer over the underlying memory infrastructure.
+///
+/// It acts as thin shell shielding changes in lower layers.
 pub(crate) struct Entries<K, V> {
     pointer: UnmanagedPointer<Entry<K, V>>,
 }
