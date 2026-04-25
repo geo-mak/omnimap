@@ -7,9 +7,9 @@ use core::{fmt, mem};
 
 use std::collections::hash_map::DefaultHasher;
 
+use crate::entries::Entries;
 use crate::index::{MapIndex, Tag};
 use crate::mem::error::{MemoryError, OnError};
-use crate::mem::pointers::UnmanagedPointer;
 use crate::opt::OnDrop;
 use crate::opt::branch_hints::likely;
 
@@ -112,7 +112,7 @@ impl FindResult {
 /// Stores the fields of the map and allocates/deallocates its pointers.
 /// It does't implement `Drop`. Deallocation is manual.
 pub(crate) struct CoreMap<K, V> {
-    pub(crate) entries: UnmanagedPointer<Entry<K, V>>,
+    pub(crate) entries: Entries<K, V>,
     pub(crate) index: MapIndex,
     pub(crate) cap: usize,
     pub(crate) len: usize,
@@ -127,7 +127,7 @@ impl<K, V> CoreMap<K, V> {
     pub(crate) const fn new() -> Self {
         Self {
             // Unallocated pointers.
-            entries: UnmanagedPointer::new(),
+            entries: Entries::new(),
             index: MapIndex::new(),
             cap: 0,
             len: 0,
@@ -148,15 +148,15 @@ impl<K, V> CoreMap<K, V> {
         on_err: OnError,
     ) -> Result<CoreMap<K, V>, MemoryError> {
         unsafe {
-            let mut entries = UnmanagedPointer::new();
+            let mut entries = Entries::new();
 
-            let layout = entries.layout_of(cap, on_err)?;
+            let layout = entries.make_layout(cap, on_err)?;
 
             let mut index = MapIndex::new_acquire_uninit(cap, on_err)?;
 
             let error_guard = OnDrop::set_on(cap, |cap| index.release(*cap));
 
-            entries.acquire(layout, on_err)?;
+            entries.acquire_memory(layout, on_err)?;
 
             error_guard.set_off();
 
@@ -331,8 +331,8 @@ impl<K, V> CoreMap<K, V> {
     #[inline]
     pub(crate) unsafe fn release(&mut self) {
         unsafe {
-            let layout = self.entries.layout_unchecked_of(self.cap);
-            self.entries.release(layout);
+            let layout = self.entries.make_layout_unchecked(self.cap);
+            self.entries.release_memory(layout);
             self.index.release(self.cap);
         }
     }

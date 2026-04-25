@@ -10,9 +10,9 @@ use core::slice::{Iter, IterMut};
 use core::{fmt, mem};
 
 use crate::core::{CoreMap, Entry};
+use crate::entries::Entries;
 use crate::index::Tag;
 use crate::mem::error::{MemoryError, OnError};
-use crate::mem::pointers::UnmanagedPointer;
 use crate::opt::OnDrop;
 use crate::opt::branch_hints::unlikely;
 
@@ -705,7 +705,7 @@ where
             instance
                 .core
                 .entries
-                .clone_from(self.core.entries.as_ptr(), current_len)
+                .clone_from(&self.core.entries, current_len)
         }
 
         instance.core.len = current_len;
@@ -739,7 +739,7 @@ where
             instance
                 .core
                 .entries
-                .clone_from(self.core.entries.as_ptr(), current_len)
+                .clone_from(&self.core.entries, current_len)
         }
 
         instance.core.len = current_len;
@@ -1273,7 +1273,7 @@ impl<'a, K, V> IntoIterator for &'a mut OmniMap<K, V> {
 
 /// An owning iterator over the entries of the map.
 pub struct OmniMapIterator<K, V> {
-    entries: UnmanagedPointer<Entry<K, V>>,
+    entries: Entries<K, V>,
     cap: usize,
     offset: usize,
     end: usize,
@@ -1283,7 +1283,7 @@ impl<K, V> OmniMapIterator<K, V> {
     #[inline]
     const fn new() -> Self {
         Self {
-            entries: UnmanagedPointer::new(),
+            entries: Entries::new(),
             cap: 0,
             end: 0,
             offset: 0,
@@ -1343,8 +1343,8 @@ impl<K, V> Drop for OmniMapIterator<K, V> {
             }
 
             // Infallible, uncontrolled. Already allocated.
-            let layout = self.entries.layout_unchecked_of(self.cap);
-            self.entries.release(layout);
+            let layout = self.entries.make_layout_unchecked(self.cap);
+            self.entries.release_memory(layout);
         }
     }
 }
@@ -1377,7 +1377,7 @@ impl<K, V> IntoIterator for OmniMap<K, V> {
         }
 
         let mut iterator = OmniMapIterator {
-            entries: UnmanagedPointer::new(),
+            entries: Entries::new(),
             cap: self.core.cap,
             end: self.core.len,
             offset: 0,

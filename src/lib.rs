@@ -5,6 +5,7 @@ mod tests;
 #[macro_use]
 mod builder;
 mod core;
+mod entries;
 mod index;
 mod opt;
 
