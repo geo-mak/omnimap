@@ -18,13 +18,13 @@ use crate::opt::branch_hints::likely;
 /// An indirect reference to _one or more_ values of type `T` consecutively in memory,
 /// with set of methods for accessing and managing memory directly.
 ///
-/// It extends the common pointer operations with more operations that simplify the development 
+/// It extends the common pointer operations with more operations that simplify the development
 /// of custom data structures.
-/// 
-/// The simplification factor comes from the fact that it provides a lot of common methods with 
-/// very rich set of tests related to memory semantics, while at the same it has very simple type 
+///
+/// The simplification factor comes from the fact that it provides a lot of common methods with
+/// very rich set of tests related to memory semantics, while at the same it has very simple type
 /// requirement `T`. `T` in upper layers can be changed continuously while all tests remain valid.
-/// 
+///
 /// It doesn't store any metadata about its allocated memory, such as the size of
 /// the allocated memory and the number of initialized elements, therefore it doesn't provide
 /// checked operations or automatic memory management.
@@ -1128,12 +1128,14 @@ mod alloc_ptr_tests {
     fn test_alloc_ptr_clone_from_safe_unwind() {
         let mut source: UnmanagedPointer<PanicOnClone> = UnmanagedPointer::new();
         let mut target: UnmanagedPointer<PanicOnClone> = UnmanagedPointer::new();
+
         unsafe {
             let layout = source.make_layout_unchecked(10);
             let _ = source.acquire_memory(layout, OnError::Panic);
             let _ = target.acquire_memory(layout, OnError::Panic);
 
             let drop_counter = Rc::new(RefCell::new(0));
+
             for i in 0..10 {
                 let value = PanicOnClone {
                     id: i,
@@ -1143,13 +1145,16 @@ mod alloc_ptr_tests {
                 source.store(i, value);
             }
 
-            let source_ptr = source.ptr as *const ();
-            let target_ptr = &mut target as *mut UnmanagedPointer<PanicOnClone> as *mut ();
+            let source_ptr = source.cast::<()>();
+            let target_ptr = target.cast_mut::<()>();
 
             let result = std::panic::catch_unwind(move || {
-                let target = &mut *(target_ptr as *mut UnmanagedPointer<PanicOnClone>);
-                let source = source_ptr as *const PanicOnClone;
-                target.clone_from(source, 10);
+                let mut target = UnmanagedPointer {
+                    ptr: target_ptr.cast::<PanicOnClone>(),
+                    _t: PhantomData,
+                };
+
+                target.clone_from(source_ptr.cast::<PanicOnClone>(), 10);
             });
 
             assert!(result.is_err());
