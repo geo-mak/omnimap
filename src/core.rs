@@ -147,7 +147,7 @@ impl<K, V> CoreMap<K, V> {
 
         mem::swap(self, &mut core);
 
-        unsafe { core.release() }
+        unsafe { core.release_memory() }
 
         Ok(())
     }
@@ -183,7 +183,7 @@ impl<K, V> CoreMap<K, V> {
 
         mem::swap(self, &mut core);
 
-        unsafe { core.release() }
+        unsafe { core.release_memory() }
 
         Ok(())
     }
@@ -232,7 +232,7 @@ impl<K, V> CoreMap<K, V> {
     ) -> Result<(), MemoryError> {
         if likely(count != 0) {
             let extra_cap = Self::allocation_capacity(count, on_err)?;
-            
+
             if likely(self.cap != 0) {
                 match self.cap.checked_add(extra_cap) {
                     Some(new_cap) => unsafe { self.adjust_used_layout(new_cap, on_err) },
@@ -267,7 +267,7 @@ impl<K, V> CoreMap<K, V> {
     ///
     /// Safety: Data must be allocated before calling this method.
     #[inline]
-    pub(crate) unsafe fn release(&mut self) {
+    pub(crate) unsafe fn release_memory(&mut self) {
         unsafe {
             let layout = self.entries.make_layout_unchecked(self.cap);
             self.entries.release_memory(layout);

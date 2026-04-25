@@ -53,7 +53,7 @@ impl<K, V> Drop for OmniMap<K, V> {
         unsafe {
             // This call is safe even if the length is zero.
             self.core.drop_initialized();
-            self.core.release();
+            self.core.release_memory();
         }
     }
 }
@@ -407,7 +407,7 @@ impl<K, V> OmniMap<K, V> {
             if shrinking_cap == 0 {
                 // Safety: The shrinking capacity = len = 0.
                 unsafe {
-                    self.core.release();
+                    self.core.release_memory();
                     self.core.cap = 0;
                     self.core.free = 0;
                 };
@@ -464,7 +464,7 @@ impl<K, V> OmniMap<K, V> {
             // Safety: The core has an allocated memory
             if current_len == 0 {
                 unsafe {
-                    self.core.release();
+                    self.core.release_memory();
                     self.core.cap = 0;
                     self.core.free = 0;
                 };
