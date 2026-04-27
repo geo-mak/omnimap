@@ -141,6 +141,45 @@ impl<K, V> OmniMap<K, V> {
         }
     }
 
+    /// Creates a new instance with the specified `capacity`.
+    ///
+    /// This function will return an error if capacity overflow occurs, or when allocation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use omnimap::{OmniMap, MemoryError};
+    ///
+    /// // Example 1.
+    /// let result: Result<OmniMap<i32, &str>, MemoryError> = OmniMap::try_with_capacity(0);
+    /// let map = result.unwrap();
+    /// assert_eq!(map.len(), 0);
+    /// assert_eq!(map.capacity(), 0);
+    ///
+    /// // Example 2.
+    /// let result: Result<OmniMap<i32, &str>, MemoryError> = OmniMap::try_with_capacity(10);
+    /// let map = result.unwrap();
+    /// assert_eq!(map.len(), 0);
+    /// assert_eq!(map.capacity(), 10);
+    ///
+    /// // Example 3.
+    /// let result: Result<OmniMap<i32, &str>, MemoryError> = OmniMap::try_with_capacity(usize::MAX);
+    /// assert!(matches!(result, Err(MemoryError::LayoutErr)));
+    ///
+    /// ```
+    #[inline]
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, MemoryError> {
+        if capacity == 0 {
+            return Ok(Self::new());
+        }
+
+        let cap = CoreMap::<K, V>::allocation_capacity(capacity, OnError::ReturnErr)?;
+
+        let core = CoreMap::new_acquire_init(cap, OnError::ReturnErr)?;
+
+        Ok(Self { core })
+    }
+
     /// Returns the remaining usable capacity of the map.
     ///
     /// # Examples
