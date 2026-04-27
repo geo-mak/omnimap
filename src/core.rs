@@ -241,7 +241,7 @@ impl<K, V> CoreMap<K, V> {
         }
     }
 
-    /// Tries to reserve `additional` memory.
+    /// Tries to reserve additional memory.
     ///
     /// All internal calls are checked, with result depends on the error handling context `on_err`.
     pub(crate) fn acquire_additional_memory(
