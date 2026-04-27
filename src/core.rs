@@ -482,20 +482,26 @@ impl<K, V> CoreMap<K, V> {
     {
         let mut slot = hash % self.cap;
 
-        unsafe {
-            loop {
-                match self.index.load_tag(slot) {
-                    Tag::Used => {
-                        let entry = self.index.load_entry_index(slot);
-                        if key.eq_key(&self.entries.reference(entry).key) {
-                            return FindResult { slot, entry };
-                        }
+        loop {
+            match unsafe { self.index.load_tag(slot) } {
+                Tag::Used => {
+                    let entry_offset = unsafe { self.index.load_entry_index(slot) };
+
+                    let key_ref = unsafe { &self.entries.reference(entry_offset).key };
+
+                    if key.eq_key(key_ref) {
+                        return FindResult {
+                            slot,
+                            entry: entry_offset,
+                        };
                     }
-                    Tag::Free => return FindResult::just_slot(slot),
-                    Tag::Discarded => { /* TODO: Recovering it can save expensive reallocations */ }
                 }
-                slot = (slot + 1) % self.cap;
+                Tag::Free => return FindResult::just_slot(slot),
+                // TODO: Recovering it can save expensive reallocations.
+                Tag::Discarded => {}
             }
+
+            slot = (slot + 1) % self.cap;
         }
     }
 
