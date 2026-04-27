@@ -415,25 +415,26 @@ impl<K, V> CoreMap<K, V> {
     /// inclusive upper bound.
     const fn decrement_index_hash(&mut self, after: usize, inc_end: usize) {
         let mut i = after + 1;
-        unsafe {
-            while i <= inc_end {
-                let hash = self.entries.reference(i).hash;
-                let mut slot = hash % self.cap;
 
-                'probing: loop {
-                    if self.index.load_tag(slot).is_used() {
-                        let index = self.index.entry_index_ref_mut(slot);
-                        if *index == i {
-                            *index -= 1;
-                            break 'probing;
-                        }
+        while i <= inc_end {
+            let hash = unsafe { self.entries.reference(i).hash };
+
+            let mut slot = hash % self.cap;
+
+            'probing: loop {
+                if unsafe { self.index.load_tag(slot).is_used() } {
+                    let index = unsafe { self.index.entry_index_ref_mut(slot) };
+
+                    if *index == i {
+                        *index -= 1;
+                        break 'probing;
                     }
-
-                    slot = (slot + 1) % self.cap
                 }
 
-                i += 1;
+                slot = (slot + 1) % self.cap
             }
+
+            i += 1;
         }
     }
 
