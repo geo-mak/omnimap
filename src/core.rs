@@ -103,6 +103,9 @@ impl<K, V> CoreMap<K, V> {
                 index,
                 entries,
                 cap,
+                // TODO:
+                // This is bug-free, but it bugs me.
+                // Put it somewhere else to avoid double set of free.
                 free: Self::usable_capacity_of(cap),
                 len: 0,
             };
