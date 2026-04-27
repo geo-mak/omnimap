@@ -91,7 +91,7 @@ impl<K, V> CoreMap<K, V> {
 
             let layout = entries.make_layout(cap, on_err)?;
 
-            let mut index = MapIndex::new_acquire_uninit(cap, on_err)?;
+            let mut index = MapIndex::with_memory_uninit(cap, on_err)?;
 
             let error_guard = OnDrop::set_on(cap, |cap| index.release_memory(*cap));
 

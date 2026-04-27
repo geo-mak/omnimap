@@ -108,7 +108,7 @@ impl MapIndex {
     ///
     /// Handling of errors will be done according to the error handling context `on_err`.
     #[inline]
-    pub(crate) unsafe fn new_acquire_uninit(
+    pub(crate) unsafe fn with_memory_uninit(
         cap: usize,
         on_err: OnError,
     ) -> Result<Self, MemoryError> {
@@ -285,7 +285,7 @@ mod index_tests {
     #[test]
     fn test_index_new_allocate_uninitialized() {
         unsafe {
-            let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
+            let mut instance = MapIndex::with_memory_uninit(10, OnError::Panic).unwrap();
 
             assert!(!instance.pointer.is_null());
 
@@ -296,7 +296,7 @@ mod index_tests {
     #[test]
     fn test_index_allocate_uninitialized_error() {
         unsafe {
-            let result = MapIndex::new_acquire_uninit(isize::MAX as usize, OnError::ReturnErr);
+            let result = MapIndex::with_memory_uninit(isize::MAX as usize, OnError::ReturnErr);
             assert!(result.is_err());
         }
     }
@@ -304,7 +304,7 @@ mod index_tests {
     #[test]
     fn test_index_store_read_tags() {
         unsafe {
-            let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
+            let mut instance = MapIndex::with_memory_uninit(10, OnError::Panic).unwrap();
 
             instance.set_tags_free(10);
 
@@ -327,7 +327,7 @@ mod index_tests {
     #[test]
     fn test_index_store_read_entry_index() {
         unsafe {
-            let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
+            let mut instance = MapIndex::with_memory_uninit(10, OnError::Panic).unwrap();
 
             instance.set_tags_free(10);
 
@@ -346,7 +346,7 @@ mod index_tests {
     #[test]
     fn test_index_initialize_from() {
         unsafe {
-            let mut source = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
+            let mut source = MapIndex::with_memory_uninit(10, OnError::Panic).unwrap();
 
             source.set_tags_free(10);
 
@@ -358,7 +358,7 @@ mod index_tests {
                 source.store_entry_index(i, 11)
             }
 
-            let mut target = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
+            let mut target = MapIndex::with_memory_uninit(10, OnError::Panic).unwrap();
 
             target.copy_from(&source, 10);
 
@@ -378,7 +378,7 @@ mod index_tests {
     #[test]
     fn test_index_reset_control_tags() {
         unsafe {
-            let mut instance = MapIndex::new_acquire_uninit(10, OnError::Panic).unwrap();
+            let mut instance = MapIndex::with_memory_uninit(10, OnError::Panic).unwrap();
 
             instance.set_tags_free(10);
 
