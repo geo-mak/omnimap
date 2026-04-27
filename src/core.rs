@@ -86,7 +86,7 @@ impl<K, V> CoreMap<K, V> {
     /// # Safety
     ///
     /// Capacity must be greater than `0`.
-    pub(crate) fn with_memory_uninit(
+    pub(crate) unsafe fn with_memory_uninit(
         cap: usize,
         on_err: OnError,
     ) -> Result<CoreMap<K, V>, MemoryError> {
@@ -132,7 +132,7 @@ impl<K, V> CoreMap<K, V> {
         cap: usize,
         on_err: OnError,
     ) -> Result<CoreMap<K, V>, MemoryError> {
-        let mut instance = Self::with_memory_uninit(cap, on_err)?;
+        let mut instance = unsafe { Self::with_memory_uninit(cap, on_err)? };
         unsafe { instance.index.set_tags_free(cap) };
         Ok(instance)
     }
