@@ -207,7 +207,7 @@ impl<K, V> OmniMap<K, V> {
 
     /// Reserves capacity for `additional` elements in advance.
     ///
-    /// The resulting capacity will be equal to `self.core.capacity() + additional` or _more_ to
+    /// The resulting capacity will be equal to `self.capacity() + additional` or _more_ to
     /// maintain the load factor.
     ///
     /// This method is no-op if `additional` is `0`.
@@ -254,7 +254,7 @@ impl<K, V> OmniMap<K, V> {
     /// This method is semantically equivalent to [`OmniMap::reserve`], except that it returns an
     /// error instead of panicking when the allocation fails.
     ///
-    /// The resulting capacity will be equal to `self.core.capacity() + additional` or _more_ to
+    /// The resulting capacity will be equal to `self.capacity() + additional` or _more_ to
     /// maintain the load factor.
     ///
     /// This method is no-op if `additional` is `0`.
