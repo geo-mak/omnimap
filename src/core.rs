@@ -62,6 +62,9 @@ impl<K, V> CoreMap<K, V> {
     /// The initial allocation capacity of the map.
     pub(crate) const INIT_TOTAL_CAP: usize = 4;
 
+    /// The default capacity of the map when created using `Default::default`.
+    pub(crate) const DEFAULT_CAPACITY: usize = 16;
+
     #[inline(always)]
     pub(crate) const fn new() -> Self {
         Self {
@@ -130,6 +133,19 @@ impl<K, V> CoreMap<K, V> {
         let mut instance = Self::with_memory_uninit(cap, on_err)?;
         unsafe { instance.index.set_tags_free(cap) };
         Ok(instance)
+    }
+
+    /// Creates an instance with default capacity.
+    ///
+    /// Control tags will be initialized.
+    ///
+    /// This function will `panic` when allocation fails.
+    #[inline(always)]
+    pub(crate) fn with_memory_default() -> Self {
+        match CoreMap::with_memory_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
+            Ok(data) => data,
+            Err(_) => unsafe { unreachable_unchecked() },
+        }
     }
 
     /// Shrinks or grows the allocated memory space to the specified `new_cap`.

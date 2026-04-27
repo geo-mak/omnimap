@@ -75,18 +75,15 @@ impl<K, V> Default for OmniMap<K, V> {
     ///
     /// assert_eq!(map.capacity(), 14);
     /// ```
-    #[inline]
+    #[inline(always)]
     fn default() -> Self {
-        match CoreMap::with_memory_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
-            Ok(data) => Self { core: data },
-            Err(_) => unsafe { unreachable_unchecked() },
+        Self {
+            core: CoreMap::with_memory_default(),
         }
     }
 }
 
 impl<K, V> OmniMap<K, V> {
-    const DEFAULT_CAPACITY: usize = 16;
-
     /// Returns a new instance without allocated capacity.
     ///
     /// # Examples
