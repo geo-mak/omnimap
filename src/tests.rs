@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod map_tests {
-    use crate::index::Tag;
-    use crate::map::{OmniMap, OmniMapIterator};
-    use crate::mem::error::MemoryError;
     use core::cell::RefCell;
     use std::hash::Hash;
     use std::rc::Rc;
+
+    use crate::index::Tag;
+    use crate::map::{OmniMap, OmniMapIterator};
+    use crate::mem::error::MemoryError;
 
     #[test]
     fn test_map_new() {
@@ -15,10 +16,19 @@ mod map_tests {
         assert_eq!(map.len(), 0);
         assert_eq!(map.debug_deleted(), 0);
         assert_eq!(map.debug_usable_capacity(), 0);
+        assert_eq!(map.debug_allocated_capacity(), 0);
     }
 
     #[test]
     fn test_map_new_with_capacity() {
+        let map: OmniMap<u8, &str> = OmniMap::with_capacity(0);
+
+        assert_eq!(map.len(), 0);
+        assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.debug_usable_capacity(), 0);
+        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_allocated_capacity(), 0);
+
         let map: OmniMap<u8, &str> = OmniMap::with_capacity(10);
 
         assert_eq!(map.len(), 0);
@@ -29,6 +39,30 @@ mod map_tests {
     }
 
     #[test]
+    fn test_map_new_try_with_capacity() {
+        let result: Result<OmniMap<u8, &str>, MemoryError> = OmniMap::try_with_capacity(0);
+        let map = result.unwrap();
+
+        assert_eq!(map.len(), 0);
+        assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.debug_usable_capacity(), 0);
+        assert_eq!(map.capacity(), 0);
+        assert_eq!(map.debug_allocated_capacity(), 0);
+
+        let result: Result<OmniMap<u8, &str>, MemoryError> = OmniMap::try_with_capacity(10);
+        let map = result.unwrap();
+
+        assert_eq!(map.len(), 0);
+        assert_eq!(map.debug_deleted(), 0);
+        assert_eq!(map.debug_usable_capacity(), 10);
+        assert_eq!(map.capacity(), 10);
+        assert_eq!(map.debug_allocated_capacity(), 12);
+
+        let result: Result<OmniMap<u8, &str>, MemoryError> = OmniMap::try_with_capacity(usize::MAX);
+        assert!(matches!(result, Err(MemoryError::LayoutErr)));
+    }
+
+    #[test]
     fn test_map_new_default() {
         let map: OmniMap<u8, &str> = OmniMap::default();
 
@@ -36,6 +70,7 @@ mod map_tests {
         assert_eq!(map.debug_deleted(), 0);
         assert_eq!(map.debug_usable_capacity(), 14);
         assert_eq!(map.capacity(), 14);
+        assert_eq!(map.debug_allocated_capacity(), 16);
     }
 
     #[test]
