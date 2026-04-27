@@ -5,7 +5,7 @@ An indexed key-value in-memory data store with characteristics of both hashmaps 
 Originally designed as a lightweight, indexed key-value store for high-performance snappy parsers and compilers.
 
 ## **⚠️ Notes**:
-- The public API is unstable and gets changed frequently.
+- The public API is unstable and it may get changed.
 
 - No release has been made yet and it is **not** recommended for production use.
 
