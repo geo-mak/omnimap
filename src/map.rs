@@ -685,7 +685,7 @@ impl<K, V> Index<usize> for OmniMap<K, V> {
     /// ```
     #[inline]
     fn index(&self, index: usize) -> &V {
-        assert!(index < self.core.len, "Index out of bounds.");
+        assert!(index < self.core.len, "Index out of bounds");
         unsafe { &self.core.entries.reference(index).value }
     }
 }
@@ -715,7 +715,7 @@ impl<K, V> IndexMut<usize> for OmniMap<K, V> {
     /// ```
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut V {
-        assert!(index < self.core.len, "Index out of bounds.");
+        assert!(index < self.core.len, "Index out of bounds");
         unsafe { &mut self.core.entries.reference_mut(index).value }
     }
 }
