@@ -77,7 +77,7 @@ impl<K, V> Default for OmniMap<K, V> {
     /// ```
     #[inline]
     fn default() -> Self {
-        match CoreMap::new_acquire_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
+        match CoreMap::with_memory_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
             Ok(data) => Self { core: data },
             Err(_) => unsafe { unreachable_unchecked() },
         }
@@ -135,7 +135,7 @@ impl<K, V> OmniMap<K, V> {
             Err(_) => unsafe { unreachable_unchecked() },
         };
 
-        match CoreMap::new_acquire_init(cap, OnError::Panic) {
+        match CoreMap::with_memory_init(cap, OnError::Panic) {
             Ok(core) => OmniMap { core },
             Err(_) => unsafe { unreachable_unchecked() },
         }
@@ -175,7 +175,7 @@ impl<K, V> OmniMap<K, V> {
 
         let cap = CoreMap::<K, V>::allocation_capacity(capacity, OnError::ReturnErr)?;
 
-        let core = CoreMap::new_acquire_init(cap, OnError::ReturnErr)?;
+        let core = CoreMap::with_memory_init(cap, OnError::ReturnErr)?;
 
         Ok(Self { core })
     }
@@ -732,7 +732,7 @@ where
         let current_cap = self.core.cap;
         let current_len = self.core.len;
 
-        let core = match CoreMap::new_acquire_init(current_cap, OnError::Panic) {
+        let core = match CoreMap::with_memory_init(current_cap, OnError::Panic) {
             Ok(instance) => instance,
             Err(_) => unsafe { unreachable_unchecked() },
         };
@@ -766,7 +766,7 @@ where
 
         let compact_cap = unsafe { CoreMap::<K, V>::allocation_capacity_unchecked(current_len) };
 
-        let core = match CoreMap::new_acquire_init(compact_cap, OnError::Panic) {
+        let core = match CoreMap::with_memory_init(compact_cap, OnError::Panic) {
             Ok(instance) => instance,
             Err(_) => unsafe { unreachable_unchecked() },
         };

@@ -76,13 +76,13 @@ impl<K, V> CoreMap<K, V> {
 
     /// Creates a new allocated instance according the to the specified capacity `cap`.
     ///
-    /// Control bytes will not be initialized.
+    /// Control tags will not be initialized.
     ///
     /// Error handling depends on the error handling context `on_err`.
     ///
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
-    pub(crate) fn new_acquire_uninit(
+    pub(crate) fn with_memory_uninit(
         cap: usize,
         on_err: OnError,
     ) -> Result<CoreMap<K, V>, MemoryError> {
@@ -113,18 +113,18 @@ impl<K, V> CoreMap<K, V> {
 
     /// Creates a new allocated instance according the to the specified capacity `cap`.
     ///
-    /// Control bytes will be initialized.
+    /// Control tags will be initialized.
     ///
     /// Error handling depends on the error handling context `on_err`.
     ///
     /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
     /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
     #[inline(always)]
-    pub(crate) fn new_acquire_init(
+    pub(crate) fn with_memory_init(
         cap: usize,
         on_err: OnError,
     ) -> Result<CoreMap<K, V>, MemoryError> {
-        let mut instance = Self::new_acquire_uninit(cap, on_err)?;
+        let mut instance = Self::with_memory_uninit(cap, on_err)?;
         unsafe { instance.index.set_tags_free(cap) };
         Ok(instance)
     }
@@ -143,7 +143,7 @@ impl<K, V> CoreMap<K, V> {
         on_err: OnError,
     ) -> Result<(), MemoryError> {
         debug_assert!(self.len == 0);
-        let mut core = Self::new_acquire_init(new_cap, on_err)?;
+        let mut core = Self::with_memory_init(new_cap, on_err)?;
 
         mem::swap(self, &mut core);
 
@@ -165,7 +165,7 @@ impl<K, V> CoreMap<K, V> {
         new_cap: usize,
         on_err: OnError,
     ) -> Result<(), MemoryError> {
-        let mut core = Self::new_acquire_init(new_cap, on_err)?;
+        let mut core = Self::with_memory_init(new_cap, on_err)?;
 
         let current_len = self.len;
 
@@ -215,7 +215,7 @@ impl<K, V> CoreMap<K, V> {
             }
         } else {
             // New allocation.
-            match CoreMap::new_acquire_init(Self::INIT_TOTAL_CAP, OnError::Panic) {
+            match CoreMap::with_memory_init(Self::INIT_TOTAL_CAP, OnError::Panic) {
                 Ok(mut core) => mem::swap(self, &mut core),
                 Err(_) => unsafe { unreachable_unchecked() },
             }
@@ -239,7 +239,7 @@ impl<K, V> CoreMap<K, V> {
                     None => Err(on_err.layout_err()),
                 }
             } else {
-                match Self::new_acquire_init(extra_cap, on_err) {
+                match Self::with_memory_init(extra_cap, on_err) {
                     Ok(mut core) => {
                         mem::swap(self, &mut core);
                         Ok(())
