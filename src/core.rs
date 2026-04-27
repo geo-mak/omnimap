@@ -128,7 +128,7 @@ impl<K, V> CoreMap<K, V> {
     ///
     /// Capacity must be greater than `0`.
     #[inline(always)]
-    pub(crate) fn with_memory_init(
+    pub(crate) unsafe fn with_memory_init(
         cap: usize,
         on_err: OnError,
     ) -> Result<CoreMap<K, V>, MemoryError> {
@@ -144,7 +144,7 @@ impl<K, V> CoreMap<K, V> {
     /// This function will `panic` when allocation fails.
     #[inline(always)]
     pub(crate) fn with_memory_default() -> Self {
-        match CoreMap::with_memory_init(Self::DEFAULT_CAPACITY, OnError::Panic) {
+        match unsafe { CoreMap::with_memory_init(Self::DEFAULT_CAPACITY, OnError::Panic) } {
             Ok(data) => data,
             Err(_) => unsafe { unreachable_unchecked() },
         }
@@ -164,7 +164,7 @@ impl<K, V> CoreMap<K, V> {
         on_err: OnError,
     ) -> Result<(), MemoryError> {
         debug_assert!(self.len == 0);
-        let mut core = Self::with_memory_init(new_cap, on_err)?;
+        let mut core = unsafe { Self::with_memory_init(new_cap, on_err)? };
 
         mem::swap(self, &mut core);
 
@@ -186,7 +186,7 @@ impl<K, V> CoreMap<K, V> {
         new_cap: usize,
         on_err: OnError,
     ) -> Result<(), MemoryError> {
-        let mut core = Self::with_memory_init(new_cap, on_err)?;
+        let mut core = unsafe { Self::with_memory_init(new_cap, on_err)? };
 
         let current_len = self.len;
 
@@ -236,7 +236,7 @@ impl<K, V> CoreMap<K, V> {
             }
         } else {
             // New allocation.
-            match CoreMap::with_memory_init(Self::INIT_TOTAL_CAP, OnError::Panic) {
+            match unsafe { CoreMap::with_memory_init(Self::INIT_TOTAL_CAP, OnError::Panic) } {
                 Ok(mut core) => mem::swap(self, &mut core),
                 Err(_) => unsafe { unreachable_unchecked() },
             }
@@ -260,7 +260,7 @@ impl<K, V> CoreMap<K, V> {
                     None => Err(on_err.layout_err()),
                 }
             } else {
-                match Self::with_memory_init(extra_cap, on_err) {
+                match unsafe { Self::with_memory_init(extra_cap, on_err) } {
                     Ok(mut core) => {
                         mem::swap(self, &mut core);
                         Ok(())
