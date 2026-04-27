@@ -132,9 +132,13 @@ impl<K, V> CoreMap<K, V> {
         cap: usize,
         on_err: OnError,
     ) -> Result<CoreMap<K, V>, MemoryError> {
-        let mut instance = unsafe { Self::with_memory_uninit(cap, on_err)? };
-        unsafe { instance.index.set_tags_free(cap) };
-        Ok(instance)
+        unsafe {
+            let mut instance = Self::with_memory_uninit(cap, on_err)?;
+
+            instance.index.set_tags_free(cap);
+            
+            Ok(instance)
+        }
     }
 
     /// Creates an instance with default capacity.
