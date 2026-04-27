@@ -136,8 +136,8 @@ impl<K, V> Entries<K, V> {
     ///
     /// - Using dropped values after calling this method is `undefined behavior`.
     #[inline(always)]
-    pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
-        unsafe { self.pointer.drop_initialized(count) }
+    pub(crate) unsafe fn drop_in_place(&mut self, count: usize) {
+        unsafe { self.pointer.drop_in_place(count) }
     }
 
     /// Calls `drop` on the initialized elements in the specified range.

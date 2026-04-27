@@ -261,8 +261,8 @@ impl<K, V> CoreMap<K, V> {
     ///
     /// Data must be allocated before calling this method.
     #[inline(always)]
-    pub(crate) unsafe fn drop_initialized(&mut self) {
-        unsafe { self.entries.drop_initialized(self.len) };
+    pub(crate) unsafe fn drop_in_place(&mut self) {
+        unsafe { self.entries.drop_in_place(self.len) };
     }
 
     /// Deallocates index and entries **without** resetting the fields.

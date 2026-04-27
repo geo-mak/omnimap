@@ -203,7 +203,7 @@ impl<T> UnmanagedPointer<T> {
     ///
     /// - If `T` is not of trivial type, using dropped values after calling this method is `undefined behavior`.
     #[inline(always)]
-    pub(crate) unsafe fn drop_initialized(&mut self, count: usize) {
+    pub(crate) unsafe fn drop_in_place(&mut self, count: usize) {
         #[cfg(debug_assertions)]
         debug_assert_not_null(self.ptr);
 
@@ -554,8 +554,7 @@ impl<T> UnmanagedPointer<T> {
 
         let self_ptr = self.ptr;
 
-        let mut unwind_guard =
-            OnDrop::set_on(0, |cloned| unsafe { self.drop_initialized(*cloned) });
+        let mut unwind_guard = OnDrop::set_on(0, |cloned| unsafe { self.drop_in_place(*cloned) });
 
         let i = &mut unwind_guard.arg;
 
@@ -966,10 +965,10 @@ mod alloc_ptr_tests {
                 );
             }
 
-            alloc_ptr.drop_initialized(0);
+            alloc_ptr.drop_in_place(0);
             assert_eq!(*drop_count.borrow(), 0);
 
-            alloc_ptr.drop_initialized(3);
+            alloc_ptr.drop_in_place(3);
 
             assert_eq!(*drop_count.borrow(), 3);
 

@@ -52,7 +52,7 @@ impl<K, V> Drop for OmniMap<K, V> {
 
         unsafe {
             // This call is safe even if the length is zero.
-            self.core.drop_initialized();
+            self.core.drop_in_place();
             self.core.release_memory();
         }
     }
@@ -555,7 +555,7 @@ impl<K, V> OmniMap<K, V> {
         });
 
         unsafe {
-            protected_clear.arg.core.drop_initialized();
+            protected_clear.arg.core.drop_in_place();
         }
     }
 
