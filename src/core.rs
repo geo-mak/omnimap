@@ -363,30 +363,28 @@ impl<K, V> CoreMap<K, V> {
     /// This method should be called **only** after resetting the index.
     pub(crate) const fn build_index(&mut self) {
         let mut i = 0;
-        unsafe {
-            while i < self.len {
-                let entry = self.entries.reference(i);
-                let mut slot = entry.hash % self.cap;
+        while i < self.len {
+            let entry = unsafe { self.entries.reference(i) };
+            let mut slot = entry.hash % self.cap;
 
-                'probing: loop {
-                    let tag = self.index.tag_ref_mut(slot);
+            'probing: loop {
+                let tag = unsafe { self.index.tag_ref_mut(slot) };
 
-                    if tag.is_free() {
-                        *tag = Tag::Used;
-                        self.index.store_entry_index(slot, i);
-                        break 'probing;
-                    }
-
-                    debug_assert!(
-                        !tag.is_discarded(),
-                        "Logic error: detected deleted slot while building index"
-                    );
-
-                    slot = (slot + 1) % self.cap;
+                if tag.is_free() {
+                    *tag = Tag::Used;
+                    unsafe { self.index.store_entry_index(slot, i) };
+                    break 'probing;
                 }
 
-                i += 1;
+                debug_assert!(
+                    !tag.is_discarded(),
+                    "Logic error: detected deleted slot while building index"
+                );
+
+                slot = (slot + 1) % self.cap;
             }
+
+            i += 1;
         }
     }
 
