@@ -190,8 +190,7 @@ impl<T> UnmanagedPointer<T> {
     /// Calls `drop` on the initialized elements with the specified `count` starting from the
     /// offset `0`.
     ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the drop range `[0, count - 1]`.
+    /// Indexing is zero-based, the drop range is `[0, count - 1]`.
     ///
     /// This method is no-op when `count` is `0` or when `T` is of trivial type.
     ///
@@ -306,8 +305,7 @@ impl<T> UnmanagedPointer<T> {
 
     /// Returns an immutable slice of the initialized elements starting from the offset `0`.
     ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the slice range `[0, count - 1]`.
+    /// Indexing is zero-based, the slice range is `[0, count - 1]`.
     ///
     /// # Safety
     ///
@@ -327,8 +325,7 @@ impl<T> UnmanagedPointer<T> {
 
     /// Returns a mutable slice over `count` initialized elements starting from the offset `0`.
     ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the slice range `[0, count - 1]`.
+    /// Indexing is zero-based, the slice range is `[0, count - 1]`.
     ///
     /// # Safety
     ///
@@ -387,8 +384,7 @@ impl<T> UnmanagedPointer<T> {
     /// Writes `0` bytes to `count` values with the size of `T` in the allocated memory space
     /// starting from the offset `0`.
     ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the writing range `[0, count - 1]`.
+    /// Indexing is zero-based, the writing range is `[0, count - 1]`.
     ///
     /// # Safety
     ///
@@ -534,8 +530,7 @@ impl<T> UnmanagedPointer<T> {
 
     /// Clones values of type `T` from the memory space pointed to by the source pointer `source`.
     ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the copy range `[0, count - 1]`.
+    /// Indexing is zero-based, the cloning range is `[0, count - 1]`.
     ///
     /// This method is unwind-safe. It will call drop on the cloned elements when unwinding
     /// starts.

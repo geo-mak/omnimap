@@ -123,8 +123,7 @@ impl<K, V> Entries<K, V> {
     /// Calls `drop` on the initialized elements with the specified `count` starting from the
     /// offset `0`.
     ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the drop range `[0, count - 1]`.
+    /// Indexing is zero-based, the drop range is `[0, count - 1]`.
     ///
     /// This method is no-op when `count` is `0` or when `T` is of trivial type.
     ///
@@ -241,8 +240,7 @@ impl<K, V> Entries<K, V> {
 
     /// Returns an immutable slice of the initialized elements starting from the offset `0`.
     ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the slice range `[0, count - 1]`.
+    /// Indexing is zero-based, the slice range is `[0, count - 1]`.
     ///
     /// # Safety
     ///
@@ -257,8 +255,7 @@ impl<K, V> Entries<K, V> {
 
     /// Returns a mutable slice over `count` initialized elements starting from the offset `0`.
     ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the slice range `[0, count - 1]`.
+    /// Indexing is zero-based, the slice range is `[0, count - 1]`.
     ///
     /// # Safety
     ///
@@ -337,8 +334,7 @@ impl<K, V> Entries<K, V> {
 
     /// Clones values of type `T` from the memory space pointed to by the source pointer `source`.
     ///
-    /// Indexing is zero-based, i.e., the last element is at offset `count - 1`, this will make
-    /// the copy range `[0, count - 1]`.
+    /// Indexing is zero-based, the cloning range is `[0, count - 1]`.
     ///
     /// This method is unwind-safe. It will call drop on the cloned elements when unwinding
     /// starts.
