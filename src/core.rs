@@ -110,7 +110,7 @@ impl<K, V> CoreMap<K, V> {
                 // TODO:
                 // This is bug-free, but it bugs me.
                 // Put it somewhere else to avoid double set of free.
-                free: Self::usable_capacity_of(cap),
+                free: Self::usable_capacity_from(cap),
                 len: 0,
             };
 
@@ -303,13 +303,13 @@ impl<K, V> CoreMap<K, V> {
     }
 
     #[inline(always)]
-    const fn usable_capacity_of(cap: usize) -> usize {
+    const fn usable_capacity_from(cap: usize) -> usize {
         ((cap >> 3) * 7) + (((cap & 7) * 7) >> 3)
     }
 
     #[inline(always)]
     pub(crate) const fn usable_capacity(&self) -> usize {
-        Self::usable_capacity_of(self.cap)
+        Self::usable_capacity_from(self.cap)
     }
 
     /// Returns the value that maintains the load factor for a given capacity `given`.
