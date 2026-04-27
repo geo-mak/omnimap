@@ -83,8 +83,9 @@ impl<K, V> CoreMap<K, V> {
     ///
     /// Error handling depends on the error handling context `on_err`.
     ///
-    /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
-    /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
+    /// # Safety
+    ///
+    /// Capacity must be greater than `0`.
     pub(crate) fn with_memory_uninit(
         cap: usize,
         on_err: OnError,
@@ -123,8 +124,9 @@ impl<K, V> CoreMap<K, V> {
     ///
     /// Error handling depends on the error handling context `on_err`.
     ///
-    /// Note: the size of `new_cap` must be greater than `0` and within the range of `isize::MAX`
-    /// bytes to be considered a valid size, but successful allocation remains not guaranteed.
+    /// # Safety
+    ///
+    /// Capacity must be greater than `0`.
     #[inline(always)]
     pub(crate) fn with_memory_init(
         cap: usize,
