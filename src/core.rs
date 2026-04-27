@@ -136,7 +136,7 @@ impl<K, V> CoreMap<K, V> {
             let mut instance = Self::with_memory_uninit(cap, on_err)?;
 
             instance.index.set_tags_free(cap);
-            
+
             Ok(instance)
         }
     }
@@ -217,8 +217,10 @@ impl<K, V> CoreMap<K, V> {
     ///
     /// This method panics when overflow occurs or when allocation fails.
     ///
-    /// This function shall be called only if the map is considered full.
+    /// This function shall be called only when the map has no free capacity left.
     pub(crate) fn reclaim_or_acquire(&mut self) {
+        debug_assert!(self.free == 0);
+
         if self.len < self.cap >> 1 {
             // Reclaiming deleted slots only.
             self.reindex();
