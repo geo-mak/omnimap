@@ -394,16 +394,17 @@ impl<K, V> CoreMap<K, V> {
     /// The search domain is `[0, capacity - 1]`.
     const fn decrement_index_linear(&mut self, after: usize) {
         let mut i = 0;
-        unsafe {
-            while i < self.cap {
-                if self.index.load_tag(i).is_used() {
-                    let index = self.index.entry_index_ref_mut(i);
-                    if *index > after {
-                        *index -= 1;
-                    }
+
+        while i < self.cap {
+            if unsafe { self.index.load_tag(i).is_used() } {
+                let index = unsafe { self.index.entry_index_ref_mut(i) };
+
+                if *index > after {
+                    *index -= 1;
                 }
-                i += 1
             }
+
+            i += 1
         }
     }
 
