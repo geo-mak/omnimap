@@ -1371,21 +1371,22 @@ impl<K, V> ExactSizeIterator for OmniMapIterator<K, V> {
 
 impl<K, V> Drop for OmniMapIterator<K, V> {
     fn drop(&mut self) {
-        if self.entries.is_null() {
+        if self.cap != 0 {
+            unsafe {
+                // (offset < end) -> (end > 0) && the iterator is not exhausted.
+                if self.offset < self.end {
+                    // Drop the remaining entries.
+                    self.entries.drop_range(self.offset..self.end);
+                }
+
+                // Infallible, uncontrolled. Already allocated.
+                let layout = self.entries.make_layout_unchecked(self.cap);
+                self.entries.release_memory(layout);
+            }
             return;
         }
 
-        unsafe {
-            // (offset < end) -> (end > 0) && the iterator is not exhausted.
-            if self.offset < self.end {
-                // Drop the remaining entries.
-                self.entries.drop_range(self.offset..self.end);
-            }
-
-            // Infallible, uncontrolled. Already allocated.
-            let layout = self.entries.make_layout_unchecked(self.cap);
-            self.entries.release_memory(layout);
-        }
+        debug_assert!(self.entries.is_null());
     }
 }
 
