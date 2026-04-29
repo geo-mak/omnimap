@@ -1382,7 +1382,7 @@ impl<K, V> Drop for OmniMapIterator<K, V> {
                     self.entries.drop_range(self.offset..self.end);
                 }
 
-                // Safety
+                // Safety: Exact same layout.
                 let layout = self.entries.make_layout_unchecked(self.cap);
                 self.entries.release_memory(layout);
             }
