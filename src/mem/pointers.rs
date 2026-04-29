@@ -6,7 +6,7 @@ use core::ptr;
 use std::alloc::{self, alloc};
 
 #[cfg(debug_assertions)]
-use crate::mem::assertions::{
+use crate::mem::debug::{
     debug_assert_is_null, debug_assert_non_zero_size, debug_assert_not_null,
     debug_assert_valid_alignment, debug_layout_size_align,
 };

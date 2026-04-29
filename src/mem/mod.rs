@@ -1,3 +1,3 @@
-pub(crate) mod assertions;
+pub(crate) mod debug;
 pub(crate) mod error;
 pub(crate) mod pointers;
