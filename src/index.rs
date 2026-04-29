@@ -279,6 +279,8 @@ mod index_tests {
     #[test]
     fn test_index_new() {
         let instance = MapIndex::new();
+
+        #[cfg(debug_assertions)]
         assert!(instance.pointer.is_null());
     }
 
@@ -287,6 +289,7 @@ mod index_tests {
         unsafe {
             let mut instance = MapIndex::with_memory_uninit(10, OnError::Panic).unwrap();
 
+            #[cfg(debug_assertions)]
             assert!(!instance.pointer.is_null());
 
             instance.release_memory(10)

@@ -244,13 +244,6 @@ impl<T> UnmanagedPointer<T> {
         };
     }
 
-    /// Checks if the pointer is `null`.
-    #[must_use]
-    #[inline(always)]
-    pub(crate) const fn is_null(&self) -> bool {
-        self.ptr.is_null()
-    }
-
     /// Returns an instance with copy of the base pointer.
     ///
     /// # Safety
@@ -572,6 +565,18 @@ impl<T> UnmanagedPointer<T> {
     }
 }
 
+#[cfg(debug_assertions)]
+impl<T> UnmanagedPointer<T> {
+    /// Checks if the pointer is `null`.
+    ///
+    /// This function is available in debug-mode only.
+    #[must_use]
+    #[inline(always)]
+    pub(crate) const fn is_null(&self) -> bool {
+        self.ptr.is_null()
+    }
+}
+
 #[cfg(test)]
 mod alloc_ptr_tests {
     use super::*;
@@ -581,6 +586,8 @@ mod alloc_ptr_tests {
     #[test]
     fn test_alloc_ptr_new() {
         let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
+
+        #[cfg(debug_assertions)]
         assert!(alloc_ptr.is_null());
     }
 
@@ -660,6 +667,7 @@ mod alloc_ptr_tests {
             let layout = alloc_ptr.make_layout_unchecked(3);
             let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
+            #[cfg(debug_assertions)]
             assert!(!alloc_ptr.is_null());
 
             alloc_ptr.release_memory(layout);
@@ -675,6 +683,8 @@ mod alloc_ptr_tests {
             let result = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             assert!(result.is_ok());
+
+            #[cfg(debug_assertions)]
             assert!(!alloc_ptr.is_null());
 
             alloc_ptr.release_memory(layout);
@@ -691,6 +701,7 @@ mod alloc_ptr_tests {
             let layout = alloc_ptr.make_layout_unchecked(1);
             let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
+            #[cfg(debug_assertions)]
             assert!(!alloc_ptr.is_null());
 
             let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
@@ -706,10 +717,12 @@ mod alloc_ptr_tests {
 
             let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
+            #[cfg(debug_assertions)]
             assert!(!alloc_ptr.is_null());
 
             alloc_ptr.release_memory(layout);
 
+            #[cfg(debug_assertions)]
             assert!(alloc_ptr.is_null());
         }
     }
