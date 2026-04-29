@@ -1372,6 +1372,9 @@ impl<K, V> ExactSizeIterator for OmniMapIterator<K, V> {
 impl<K, V> Drop for OmniMapIterator<K, V> {
     fn drop(&mut self) {
         if self.cap != 0 {
+            #[cfg(debug_assertions)]
+            self.entries.debug_assert_has_memory();
+
             unsafe {
                 // (offset < end) -> (end > 0) && the iterator is not exhausted.
                 if self.offset < self.end {
@@ -1379,14 +1382,14 @@ impl<K, V> Drop for OmniMapIterator<K, V> {
                     self.entries.drop_range(self.offset..self.end);
                 }
 
-                // Infallible, uncontrolled. Already allocated.
+                // Safety
                 let layout = self.entries.make_layout_unchecked(self.cap);
                 self.entries.release_memory(layout);
             }
-            return;
+        } else {
+            #[cfg(debug_assertions)]
+            self.entries.debug_assert_has_no_memory();
         }
-
-        debug_assert!(self.entries.is_null());
     }
 }
 

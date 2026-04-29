@@ -159,13 +159,6 @@ impl<K, V> Entries<K, V> {
         unsafe { self.pointer.drop_range(range) }
     }
 
-    /// Checks if the pointer is `null`.
-    #[must_use]
-    #[inline(always)]
-    pub(crate) const fn is_null(&self) -> bool {
-        self.pointer.is_null()
-    }
-
     /// Returns an instance with copy of the base pointer.
     ///
     /// # Safety
@@ -354,5 +347,22 @@ impl<K, V> Entries<K, V> {
         V: Clone,
     {
         unsafe { self.pointer.clone_from(source.as_ptr(), clone_count) }
+    }
+}
+
+#[cfg(debug_assertions)]
+impl<K, V> Entries<K, V> {
+    /// Checks if the entries container has currently an allocated memory.
+    ///
+    /// This function is available in debug-mode only.
+    pub(crate) const fn debug_assert_has_memory(&self) {
+        assert!(!self.pointer.is_null())
+    }
+
+    /// Checks if the entries container has currently no allocated memory.
+    ///
+    /// This function is available in debug-mode only.
+    pub(crate) const fn debug_assert_has_no_memory(&self) {
+        assert!(self.pointer.is_null())
     }
 }
