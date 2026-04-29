@@ -356,13 +356,13 @@ impl<K, V> Entries<K, V> {
     ///
     /// This function is available in debug-mode only.
     pub(crate) const fn debug_assert_has_memory(&self) {
-        assert!(!self.pointer.is_null())
+        assert!(!self.pointer.debug_is_null())
     }
 
     /// Checks if the entries container has currently no allocated memory.
     ///
     /// This function is available in debug-mode only.
     pub(crate) const fn debug_assert_has_no_memory(&self) {
-        assert!(self.pointer.is_null())
+        assert!(self.pointer.debug_is_null())
     }
 }

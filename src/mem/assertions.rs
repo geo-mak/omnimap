@@ -1,5 +1,3 @@
-use core::ptr;
-
 /// Debug-mode check for the valid alignment.
 /// This function is only available in debug builds.
 ///
@@ -70,12 +68,4 @@ pub(crate) const fn debug_assert_not_null<T>(ptr: *const T) {
 #[cfg(debug_assertions)]
 pub(crate) const fn debug_assert_is_null<T>(ptr: *const T) {
     assert!(ptr.is_null(), "Pointer must be null");
-}
-
-/// Sets the pointer to null.
-/// This function is only available in debug builds.
-///
-#[cfg(debug_assertions)]
-pub(crate) const fn debug_set_null_mut<T>(ptr_ref: &mut *mut T) {
-    *ptr_ref = ptr::null_mut();
 }

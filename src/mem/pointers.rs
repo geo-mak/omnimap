@@ -184,7 +184,8 @@ impl<T> UnmanagedPointer<T> {
 
         unsafe { alloc::dealloc(self.ptr as *mut u8, layout) };
 
-        self.ptr = ptr::null_mut();
+        #[cfg(debug_assertions)]
+        self.debug_set_pointer_null();
     }
 
     /// Calls `drop` on the initialized elements with the specified `count` starting from the
@@ -565,14 +566,21 @@ impl<T> UnmanagedPointer<T> {
     }
 }
 
+// Debug-mode functions.
 #[cfg(debug_assertions)]
 impl<T> UnmanagedPointer<T> {
+    /// Sets the pointer to null.
+    ///
+    /// This function is available in debug-mode only.
+    const fn debug_set_pointer_null(&mut self) {
+        self.ptr = ptr::null_mut();
+    }
+
     /// Checks if the pointer is `null`.
     ///
     /// This function is available in debug-mode only.
     #[must_use]
-    #[inline(always)]
-    pub(crate) const fn is_null(&self) -> bool {
+    pub(crate) const fn debug_is_null(&self) -> bool {
         self.ptr.is_null()
     }
 }
@@ -582,14 +590,6 @@ mod alloc_ptr_tests {
     use super::*;
     use std::cell::RefCell;
     use std::rc::Rc;
-
-    #[test]
-    fn test_alloc_ptr_new() {
-        let alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
-
-        #[cfg(debug_assertions)]
-        assert!(alloc_ptr.is_null());
-    }
 
     #[test]
     fn test_alloc_ptr_make_layout_unchecked_ok() {
@@ -661,33 +661,21 @@ mod alloc_ptr_tests {
     }
 
     #[test]
-    fn test_alloc_ptr_new_allocate() {
+    fn test_alloc_ptr_allocate_deallocate() {
         unsafe {
             let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
+
             let layout = alloc_ptr.make_layout_unchecked(3);
+
             let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             #[cfg(debug_assertions)]
-            assert!(!alloc_ptr.is_null());
+            assert!(!alloc_ptr.debug_is_null());
 
             alloc_ptr.release_memory(layout);
-        }
-    }
-
-    #[test]
-    fn test_alloc_ptr_allocate() {
-        let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
-
-        unsafe {
-            let layout = alloc_ptr.make_layout_unchecked(3);
-            let result = alloc_ptr.acquire_memory(layout, OnError::Panic);
-
-            assert!(result.is_ok());
 
             #[cfg(debug_assertions)]
-            assert!(!alloc_ptr.is_null());
-
-            alloc_ptr.release_memory(layout);
+            assert!(alloc_ptr.debug_is_null());
         }
     }
 
@@ -702,28 +690,9 @@ mod alloc_ptr_tests {
             let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
 
             #[cfg(debug_assertions)]
-            assert!(!alloc_ptr.is_null());
+            assert!(!alloc_ptr.debug_is_null());
 
             let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
-        }
-    }
-
-    #[test]
-    fn test_alloc_ptr_allocate_deallocate() {
-        unsafe {
-            let mut alloc_ptr: UnmanagedPointer<u8> = UnmanagedPointer::new();
-
-            let layout = alloc_ptr.make_layout_unchecked(3);
-
-            let _ = alloc_ptr.acquire_memory(layout, OnError::Panic);
-
-            #[cfg(debug_assertions)]
-            assert!(!alloc_ptr.is_null());
-
-            alloc_ptr.release_memory(layout);
-
-            #[cfg(debug_assertions)]
-            assert!(alloc_ptr.is_null());
         }
     }
 
